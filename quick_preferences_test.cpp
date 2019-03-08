@@ -19,6 +19,7 @@ struct Preferences : public QuickPreferences {
 	std::vector<Chapter> chapters;
 	std::vector<std::shared_ptr<Chapter>> footnotes;
 	std::vector<std::unique_ptr<Chapter>> addenda;
+	Chapter* editorsNote = nullptr;
 
 	virtual void saveOrLoad() {
 		synch("last_folder", lastFolder);
@@ -28,6 +29,7 @@ struct Preferences : public QuickPreferences {
 		synch("chapters", chapters);
 		synch("footnotes", footnotes);
 		synch("addenda", addenda);
+		synch("editors_notes", editorsNote);
 	}
 };
 

@@ -29,28 +29,28 @@ public:
 		OBJECT
 	};
 	struct JSON {
-		virtual JSONtype type() {
+		inline virtual JSONtype type() {
 			return JSONtype::NIL;
 		}
-		virtual std::string& getString() {
+		inline virtual std::string& getString() {
 			throw(std::runtime_error("String value is not really string"));
 		}
-		virtual double& getDouble() {
+		inline virtual double& getDouble() {
 			throw(std::runtime_error("Double value is not really double"));
 		}
-		virtual bool& getBool() {
+		inline virtual bool& getBool() {
 			throw(std::runtime_error("Bool value is not really bool"));
 		}
-		virtual std::vector<std::shared_ptr<JSON>>& getVector() {
+		inline virtual std::vector<std::shared_ptr<JSON>>& getVector() {
 			throw(std::runtime_error("Array value is not really array"));
 		}
-		virtual std::unordered_map<std::string, std::shared_ptr<JSON>>& getObject() {
+		inline virtual std::unordered_map<std::string, std::shared_ptr<JSON>>& getObject() {
 			throw(std::runtime_error("Object value is not really an object"));
 		}
-		virtual void write(std::ostream& out, int = 0) {
+		inline virtual void write(std::ostream& out, int = 0) {
 			out << "null";
 		}
-		void writeToFile(const std::string& fileName) {
+		inline void writeToFile(const std::string& fileName) {
 			std::ofstream out(fileName);
 			if (!out.good()) throw(std::runtime_error("Could not write to file " + fileName));
 			this->write(out, 0);
@@ -82,13 +82,13 @@ public:
 		std::string contents_;
 		JSONstring(const std::string& from = "") : contents_(from) {}
 
-		virtual JSONtype type() {
+		inline virtual JSONtype type() {
 			return JSONtype::STRING;
 		}
-		virtual std::string& getString() {
+		inline virtual std::string& getString() {
 			return contents_;
 		}
-		void write(std::ostream& out, int = 0) {
+		inline void write(std::ostream& out, int = 0) {
 			writeString(out, contents_);
 		}
 	};
@@ -96,13 +96,13 @@ public:
 		double value_;
 		JSONdouble(double from = 0) : value_(from) {}
 
-		virtual JSONtype type() {
+		inline virtual JSONtype type() {
 			return JSONtype::NUMBER;
 		}
-		virtual double& getDouble() {
+		inline virtual double& getDouble() {
 			return value_;
 		}
-		void write(std::ostream& out, int = 0) {
+		inline void write(std::ostream& out, int = 0) {
 			out << value_;
 		}
 	};
@@ -110,13 +110,13 @@ public:
 		bool value_;
 		JSONbool(bool from = false) : value_(from) {}
 
-		virtual JSONtype type() {
+		inline virtual JSONtype type() {
 			return JSONtype::BOOL;
 		}
-		virtual bool& getBool() {
+		inline virtual bool& getBool() {
 			return value_;
 		}
-		void write(std::ostream& out, int = 0) {
+		inline void write(std::ostream& out, int = 0) {
 			out << (value_ ? "true" : "false");
 		}
 	};
@@ -124,13 +124,13 @@ public:
 		std::unordered_map<std::string, std::shared_ptr<JSON>> contents_;
 		JSONobject() {}
 
-		virtual JSONtype type() {
+		inline virtual JSONtype type() {
 			return JSONtype::OBJECT;
 		}
-		virtual std::unordered_map<std::string, std::shared_ptr<JSON>>& getObject() {
+		inline virtual std::unordered_map<std::string, std::shared_ptr<JSON>>& getObject() {
 			return contents_;
 		}
-		void write(std::ostream& out, int depth = 0) {
+		inline void write(std::ostream& out, int depth = 0) {
 			if (contents_.empty()) {
 				out.put('{');
 				out.put('}');
@@ -161,13 +161,13 @@ public:
 		std::vector<std::shared_ptr<JSON>> contents_;
 		JSONarray() {}
 
-		virtual JSONtype type() {
+		inline virtual JSONtype type() {
 			return JSONtype::ARRAY;
 		}
-		virtual std::vector<std::shared_ptr<JSON>>& getVector() {
+		inline virtual std::vector<std::shared_ptr<JSON>>& getVector() {
 			return contents_;
 		}
-		void write(std::ostream& out, int depth = 0) {
+		inline void write(std::ostream& out, int depth = 0) {
 			out.put('[');
 			if (contents_.empty()) {
 				out.put(']');
@@ -187,8 +187,6 @@ public:
 	};
 
 	static std::shared_ptr<JSON> parseJSON(std::istream& in) {
-		std::shared_ptr<JSON> retval;
-
 		auto readString = [&in] () -> std::string {
 			char letter = in.get();
 			std::string collected;
@@ -303,7 +301,7 @@ protected:
 	*
 	* \note Result is meaningless outside a saveOrLoad() overload
 	*/
-	bool saving() {
+	inline bool saving() {
 		return preferencesSaving_;
 	}
 
@@ -312,7 +310,7 @@ protected:
 	* \param The name of the value in the output/input file
 	* \param Reference to the value
 	*/
-	void synch(const std::string& key, std::string& value) {
+	inline void synch(const std::string& key, std::string& value) {
 		if (preferencesSaving_) {
 			preferencesJson_->getObject()[key] = std::make_shared<JSONstring>(value);
 		} else {
@@ -348,7 +346,7 @@ protected:
 	* \param The name of the value in the output/input file
 	* \param Reference to the value
 	*/
-	void synch(const std::string& key, bool& value) {
+	inline void synch(const std::string& key, bool& value) {
 		if (preferencesSaving_) {
 			preferencesJson_->getObject()[key] = std::make_shared<JSONbool>(value);
 		} else {
@@ -356,6 +354,49 @@ protected:
 			if (found != preferencesJson_->getObject().end()) {
 				value = found->second->getBool();
 			}
+		}
+	}
+	
+	/*!
+	* \brief Saves or loads an object dervied from QuickPreferences held in a smart pointer
+	* \param The name of the value in the output/input file
+	* \param Reference to the pointer
+	*
+	\ \note The smart pointer class must be dereferencable through operator*(), constructible from raw pointer to the class and the ! operation must result in a number
+	* \note If not null, the contents will be overwritten, so raw pointers must be initalised before calling it, but no memory leak will occur
+	*/
+	template<typename T>
+	typename std::enable_if<!std::is_base_of<QuickPreferences, T>::value
+			&& std::is_base_of<QuickPreferences, typename std::remove_reference<decltype(*std::declval<T>())>::type>::value
+			&& std::is_constructible<T, typename std::remove_reference<decltype(*std::declval<T>())>::type*>::value
+			&& std::is_arithmetic<typename std::remove_reference<decltype(!std::declval<T>())>::type>::value , void>::type
+	synch(const std::string& key, T& value) {
+		if (preferencesSaving_) {
+			if (!value)
+				preferencesJson_->getObject()[key] = std::make_shared<JSON>();
+			else {
+				auto making = std::make_shared<JSONobject>();
+				(*value).preferencesSaving_ = true;
+				(*value).preferencesJson_ = making;
+				(*value).saveOrLoad();
+				preferencesJson_->getObject()[key] = making;
+				(*value).preferencesJson_.reset();
+			}
+		} else {
+			auto found = preferencesJson_->getObject().find(key);
+			if (found != preferencesJson_->getObject().end()) {
+				if (found->second->type() != JSONtype::OBJECT)
+					value = nullptr;
+				else {
+					if (!value)
+						value = new typename std::remove_reference<decltype(*std::declval<T>())>::type();
+					(*value).preferencesSaving_ = false;
+					(*value).preferencesJson_ = found->second;
+					(*value).saveOrLoad();
+					(*value).preferencesJson_.reset();
+				}
+			} else
+				value = nullptr;
 		}
 	}
 	
@@ -469,7 +510,7 @@ public:
 	* \note It calls the overloaded saveOrLoad() method
 	* \note Not only that it's not thread-safe, it's not even reentrant
 	*/
-	void save(const std::string& fileName) const {
+	inline void save(const std::string& fileName) const {
 		preferencesJson_ = std::make_shared<JSONobject>();
 		preferencesSaving_ = true;
 		const_cast<QuickPreferences*>(this)->saveOrLoad();
@@ -485,7 +526,7 @@ public:
 	* \note If the file cannot be read, nothing is done
 	* \note Not only that it's not thread-safe, it's not even reentrant
 	*/
-	void load(const std::string& fileName) {
+	inline void load(const std::string& fileName) {
 		preferencesJson_ = parseJSON(fileName);
 		if (preferencesJson_->type() == JSONtype::NIL) {
 			preferencesJson_.reset();
