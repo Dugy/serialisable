@@ -374,7 +374,7 @@ protected:
 	*/
 	template<typename T>
 	typename std::enable_if<!std::is_base_of<QuickPreferences, T>::value
-			&& std::is_base_of<QuickPreferences, typename std::remove_reference<decltype(*std::declval<T>())>::type>::value
+			&& std::is_same<bool, typename std::remove_reference<decltype(std::declval<QuickPreferences>().synch(std::declval<std::string>(), *std::declval<T>()))>::type>::value
 			&& std::is_constructible<T, typename std::remove_reference<decltype(*std::declval<T>())>::type*>::value
 			&& std::is_arithmetic<typename std::remove_reference<decltype(!std::declval<T>())>::type>::value , bool>::type
 	synch(const std::string& key, T& value) {
@@ -382,26 +382,16 @@ protected:
 			if (!value)
 				preferencesJson_->getObject()[key] = std::make_shared<JSON>();
 			else {
-				auto making = std::make_shared<JSONobject>();
-				(*value).preferencesSaving_ = true;
-				(*value).preferencesJson_ = making;
-				(*value).saveOrLoad();
-				preferencesJson_->getObject()[key] = making;
-				(*value).preferencesJson_.reset();
+				synch(key, *value);
 			}
 		} else {
 			auto found = preferencesJson_->getObject().find(key);
 			if (found != preferencesJson_->getObject().end()) {
-				if (found->second->type() != JSONtype::OBJECT)
+				if (found->second->type() != JSONtype::NIL) {
+					value = new typename std::remove_reference<decltype(*std::declval<T>())>::type();
+					synch(key, *value);
+				} else
 					value = nullptr;
-				else {
-					if (!value)
-						value = new typename std::remove_reference<decltype(*std::declval<T>())>::type();
-					(*value).preferencesSaving_ = false;
-					(*value).preferencesJson_ = found->second;
-					(*value).saveOrLoad();
-					(*value).preferencesJson_.reset();
-				}
 			} else {
 				value = nullptr;
 				return false;
