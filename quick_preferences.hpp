@@ -309,27 +309,30 @@ protected:
 	* \brief Saves or loads a string value
 	* \param The name of the value in the output/input file
 	* \param Reference to the value
+	* \return false if the value was absent while reading, true otherwise
 	*/
-	inline void synch(const std::string& key, std::string& value) {
+	inline bool synch(const std::string& key, std::string& value) {
 		if (preferencesSaving_) {
 			preferencesJson_->getObject()[key] = std::make_shared<JSONstring>(value);
 		} else {
 			auto found = preferencesJson_->getObject().find(key);
 			if (found != preferencesJson_->getObject().end()) {
 				value = found->second->getString();
-			}
+			} else return false;
 		}
+		return true;
 	}
 	
 	/*!
 	* \brief Saves or loads an arithmetic value
 	* \param The name of the value in the output/input file
 	* \param Reference to the value
+	* \return false if the value was absent while reading, true otherwise
 	*
 	* \note The value is converted from and to a double for JSON conformity
 	*/
 	template<typename T>
-	typename std::enable_if<std::is_arithmetic<T>::value && !std::is_same<T, bool>::value, void>::type
+	typename std::enable_if<std::is_arithmetic<T>::value && !std::is_same<T, bool>::value, bool>::type
 	synch(const std::string& key, T& value) {
 		if (preferencesSaving_) {
 			preferencesJson_->getObject()[key] = std::make_shared<JSONdouble>(double(value));
@@ -337,30 +340,34 @@ protected:
 			auto found = preferencesJson_->getObject().find(key);
 			if (found != preferencesJson_->getObject().end()) {
 				value = T(found->second->getDouble());
-			}
+			} return false;
 		}
+		return true;
 	}
 
 	/*!
 	* \brief Saves or loads a bool
 	* \param The name of the value in the output/input file
 	* \param Reference to the value
+	* \return false if the value was absent while reading, true otherwise
 	*/
-	inline void synch(const std::string& key, bool& value) {
+	inline bool synch(const std::string& key, bool& value) {
 		if (preferencesSaving_) {
 			preferencesJson_->getObject()[key] = std::make_shared<JSONbool>(value);
 		} else {
 			auto found = preferencesJson_->getObject().find(key);
 			if (found != preferencesJson_->getObject().end()) {
 				value = found->second->getBool();
-			}
+			} else return false;
 		}
+		return true;
 	}
 	
 	/*!
 	* \brief Saves or loads an object dervied from QuickPreferences held in a smart pointer
 	* \param The name of the value in the output/input file
 	* \param Reference to the pointer
+	* \return false if the value was absent while reading, true otherwise
 	*
 	\ \note The smart pointer class must be dereferencable through operator*(), constructible from raw pointer to the class and the ! operation must result in a number
 	* \note If not null, the contents will be overwritten, so raw pointers must be initalised before calling it, but no memory leak will occur
@@ -369,7 +376,7 @@ protected:
 	typename std::enable_if<!std::is_base_of<QuickPreferences, T>::value
 			&& std::is_base_of<QuickPreferences, typename std::remove_reference<decltype(*std::declval<T>())>::type>::value
 			&& std::is_constructible<T, typename std::remove_reference<decltype(*std::declval<T>())>::type*>::value
-			&& std::is_arithmetic<typename std::remove_reference<decltype(!std::declval<T>())>::type>::value , void>::type
+			&& std::is_arithmetic<typename std::remove_reference<decltype(!std::declval<T>())>::type>::value , bool>::type
 	synch(const std::string& key, T& value) {
 		if (preferencesSaving_) {
 			if (!value)
@@ -395,18 +402,22 @@ protected:
 					(*value).saveOrLoad();
 					(*value).preferencesJson_.reset();
 				}
-			} else
+			} else {
 				value = nullptr;
+				return false;
+			}
 		}
+		return true;
 	}
 	
 	/*!
 	* \brief Saves or loads an object dervied from QuickPreferences
 	* \param The name of the value in the output/input file
 	* \param Reference to the value
+	* \return false if the value was absent while reading, true otherwise
 	*/
 	template<typename T>
-	typename std::enable_if<std::is_base_of<QuickPreferences, T>::value, void>::type
+	typename std::enable_if<std::is_base_of<QuickPreferences, T>::value, bool>::type
 	synch(const std::string& key, T& value) {
 		value.preferencesSaving_ = preferencesSaving_;
 		if (preferencesSaving_) {
@@ -421,19 +432,21 @@ protected:
 				value.preferencesJson_ = found->second;
 				value.saveOrLoad();
 				value.preferencesJson_.reset();
-			}
+			} else return false;
 		}
+		return true;
 	}
 	
 	/*!
 	* \brief Saves or loads a vector of objects derived from QuickPreferences
 	* \param The name of the value in the output/input file
 	* \param Reference to the vector
+	* \return false if the value was absent while reading, true otherwise
 	*
 	* \note Class must be default constructible
 	*/
 	template<typename T>
-	typename std::enable_if<std::is_base_of<QuickPreferences, T>::value, void>::type
+	typename std::enable_if<std::is_base_of<QuickPreferences, T>::value, bool>::type
 	synch(const std::string& key, std::vector<T>& value) {
 		if (preferencesSaving_) {
 			auto making = std::make_shared<JSONarray>();
@@ -458,14 +471,16 @@ protected:
 					filled.saveOrLoad();
 					filled.preferencesJson_.reset();
 				}
-			}
+			} else return false;
 		}
+		return true;
 	}
 	
 	/*!
 	* \brief Saves or loads a vector of smart pointers to objects derived from QuickPreferences
 	* \param The name of the value in the output/input file
 	* \param Reference to the vector
+	* \return false if the value was absent while reading, true otherwise
 	*
 	* \note The smart pointer class must be dereferencable through operator*() and constructible from raw pointer to the class
 	* \note The class must be default constructible
@@ -473,7 +488,7 @@ protected:
 	*/
 	template<typename T>
 	typename std::enable_if<std::is_base_of<QuickPreferences, typename std::remove_reference<decltype(*std::declval<T>())>::type>::value
-			&& std::is_constructible<T, typename std::remove_reference<decltype(*std::declval<T>())>::type*>::value, void>::type
+			&& std::is_constructible<T, typename std::remove_reference<decltype(*std::declval<T>())>::type*>::value, bool>::type
 	synch(const std::string& key, std::vector<T>& value) {
 		if (preferencesSaving_) {
 			auto making = std::make_shared<JSONarray>();
@@ -498,8 +513,9 @@ protected:
 					(*filled).saveOrLoad();
 					(*filled).preferencesJson_.reset();
 				}
-			}
+			} else return false;
 		}
+		return true;
 	}
 
 public:
