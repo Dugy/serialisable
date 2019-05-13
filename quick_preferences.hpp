@@ -55,6 +55,8 @@ public:
 			if (!out.good()) throw(std::runtime_error("Could not write to file " + fileName));
 			this->write(out, 0);
 		}
+
+		virtual ~JSON() = default;
 	protected:
 		static void writeString(std::ostream& out, const std::string& written) {
 			out.put('"');
@@ -76,7 +78,7 @@ public:
 		static void indent(std::ostream& out, int depth) {
 			for (int i = 0; i < depth; i++)
 				out.put('\t');
-		};
+		}
 	};
 	struct JSONstring : public JSON {
 		std::string contents_;
