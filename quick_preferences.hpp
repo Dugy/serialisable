@@ -366,7 +366,7 @@ protected:
 	}
 	
 	/*!
-	* \brief Saves or loads an object dervied from QuickPreferences held in a smart pointer
+	* \brief Saves or loads an object derived from QuickPreferences held in a smart pointer
 	* \param The name of the value in the output/input file
 	* \param Reference to the pointer
 	* \return false if the value was absent while reading, true otherwise
@@ -403,7 +403,7 @@ protected:
 	}
 	
 	/*!
-	* \brief Saves or loads an object dervied from QuickPreferences
+	* \brief Saves or loads an object derived from QuickPreferences
 	* \param The name of the value in the output/input file
 	* \param Reference to the value
 	* \return false if the value was absent while reading, true otherwise
