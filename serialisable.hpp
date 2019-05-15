@@ -4,8 +4,8 @@
 * See more at https://github.com/Dugy/quick_preferences
 */
 
-#ifndef QUICK_PREFERENCES_HPP
-#define QUICK_PREFERENCES_HPP
+#ifndef SERIALISABLE_BY_DUGI_HPP
+#define SERIALISABLE_BY_DUGI_HPP
 
 #include <vector>
 #include <string>
@@ -17,7 +17,7 @@
 #include <sstream>
 #include <type_traits>
 
-class QuickPreferences {
+class Serialisable {
 
 public:
 	enum class JSONtype : uint8_t {
@@ -294,14 +294,14 @@ protected:
 	* \note The sync() method knows whether to save it or not
 	* \note Const correctness is violated here, but I find it better than duplication
 	*/
-	virtual void saveOrLoad() = 0;
+	virtual void serialisation() = 0;
 
 	/*!
 	* \brief Returns if the structure is being saved or loaded
 	*
 	* \return Whether it's saved (loaded if false)
 	*
-	* \note Result is meaningless outside a saveOrLoad() overload
+	* \note Result is meaningless outside a serialisation() overload
 	*/
 	inline bool saving() {
 		return preferencesSaving_;
@@ -366,7 +366,7 @@ protected:
 	}
 	
 	/*!
-	* \brief Saves or loads an object derived from QuickPreferences held in a smart pointer
+	* \brief Saves or loads an object derived from Serialisable held in a smart pointer
 	* \param The name of the value in the output/input file
 	* \param Reference to the pointer
 	* \return false if the value was absent while reading, true otherwise
@@ -375,8 +375,8 @@ protected:
 	* \note If not null, the contents will be overwritten, so raw pointers must be initalised before calling it, but no memory leak will occur
 	*/
 	template<typename T>
-	typename std::enable_if<!std::is_base_of<QuickPreferences, T>::value
-			&& std::is_same<bool, typename std::remove_reference<decltype(std::declval<QuickPreferences>().synch(std::declval<std::string>(), *std::declval<T>()))>::type>::value
+	typename std::enable_if<!std::is_base_of<Serialisable, T>::value
+			&& std::is_same<bool, typename std::remove_reference<decltype(std::declval<Serialisable>().synch(std::declval<std::string>(), *std::declval<T>()))>::type>::value
 			&& std::is_constructible<T, typename std::remove_reference<decltype(*std::declval<T>())>::type*>::value
 			&& std::is_arithmetic<typename std::remove_reference<decltype(!std::declval<T>())>::type>::value , bool>::type
 	synch(const std::string& key, T& value) {
@@ -403,26 +403,26 @@ protected:
 	}
 	
 	/*!
-	* \brief Saves or loads an object derived from QuickPreferences
+	* \brief Saves or loads an object derived from Serialisable
 	* \param The name of the value in the output/input file
 	* \param Reference to the value
 	* \return false if the value was absent while reading, true otherwise
 	*/
 	template<typename T>
-	typename std::enable_if<std::is_base_of<QuickPreferences, T>::value, bool>::type
+	typename std::enable_if<std::is_base_of<Serialisable, T>::value, bool>::type
 	synch(const std::string& key, T& value) {
 		value.preferencesSaving_ = preferencesSaving_;
 		if (preferencesSaving_) {
 			auto making = std::make_shared<JSONobject>();
 			value.preferencesJson_ = making;
-			value.saveOrLoad();
+			value.serialisation();
 			preferencesJson_->getObject()[key] = making;
 			value.preferencesJson_.reset();
 		} else {
 			auto found = preferencesJson_->getObject().find(key);
 			if (found != preferencesJson_->getObject().end()) {
 				value.preferencesJson_ = found->second;
-				value.saveOrLoad();
+				value.serialisation();
 				value.preferencesJson_.reset();
 			} else return false;
 		}
@@ -430,7 +430,7 @@ protected:
 	}
 	
 	/*!
-	* \brief Saves or loads a vector of objects derived from QuickPreferences
+	* \brief Saves or loads a vector of objects derived from Serialisable
 	* \param The name of the value in the output/input file
 	* \param Reference to the vector
 	* \return false if the value was absent while reading, true otherwise
@@ -438,7 +438,7 @@ protected:
 	* \note Class must be default constructible
 	*/
 	template<typename T>
-	typename std::enable_if<std::is_base_of<QuickPreferences, T>::value, bool>::type
+	typename std::enable_if<std::is_base_of<Serialisable, T>::value, bool>::type
 	synch(const std::string& key, std::vector<T>& value) {
 		if (preferencesSaving_) {
 			auto making = std::make_shared<JSONarray>();
@@ -446,7 +446,7 @@ protected:
 				auto innerMaking = std::make_shared<JSONobject>();
 				value[i].preferencesSaving_ = true;
 				value[i].preferencesJson_ = innerMaking;
-				value[i].saveOrLoad();
+				value[i].serialisation();
 				value[i].preferencesJson_.reset();
 				making->getVector().push_back(innerMaking);
 			}
@@ -460,7 +460,7 @@ protected:
 					T& filled = value.back();
 					filled.preferencesSaving_ = false;
 					filled.preferencesJson_ = found->second->getVector()[i];
-					filled.saveOrLoad();
+					filled.serialisation();
 					filled.preferencesJson_.reset();
 				}
 			} else return false;
@@ -469,7 +469,7 @@ protected:
 	}
 	
 	/*!
-	* \brief Saves or loads a vector of smart pointers to objects derived from QuickPreferences
+	* \brief Saves or loads a vector of smart pointers to objects derived from Serialisable
 	* \param The name of the value in the output/input file
 	* \param Reference to the vector
 	* \return false if the value was absent while reading, true otherwise
@@ -479,7 +479,7 @@ protected:
 	* \note Using a vector of raw pointers may cause memory leaks if there is some content before loading
 	*/
 	template<typename T>
-	typename std::enable_if<std::is_base_of<QuickPreferences, typename std::remove_reference<decltype(*std::declval<T>())>::type>::value
+	typename std::enable_if<std::is_base_of<Serialisable, typename std::remove_reference<decltype(*std::declval<T>())>::type>::value
 			&& std::is_constructible<T, typename std::remove_reference<decltype(*std::declval<T>())>::type*>::value, bool>::type
 	synch(const std::string& key, std::vector<T>& value) {
 		if (preferencesSaving_) {
@@ -488,7 +488,7 @@ protected:
 				auto innerMaking = std::make_shared<JSONobject>();
 				(*value[i]).preferencesSaving_ = true;
 				(*value[i]).preferencesJson_ = innerMaking;
-				(*value[i]).saveOrLoad();
+				(*value[i]).serialisation();
 				(*value[i]).preferencesJson_.reset();
 				making->getVector().push_back(innerMaking);
 			}
@@ -502,7 +502,7 @@ protected:
 					T& filled = value.back();
 					(*filled).preferencesSaving_ = false;
 					(*filled).preferencesJson_ = found->second->getVector()[i];
-					(*filled).saveOrLoad();
+					(*filled).serialisation();
 					(*filled).preferencesJson_.reset();
 				}
 			} else return false;
@@ -520,12 +520,12 @@ public:
 	*/
 	inline std::string serialise() const {
 		std::shared_ptr<JSON> target = std::make_shared<JSONobject>();
-		actionData_.preferencesJson = target.get();
-		action_ = ActionType::SAVING;
-		const_cast<QuickPreferences*>(this)->process();
+		preferencesJson_ = target;
+		preferencesSaving_ = true;
+		const_cast<Serialisable*>(this)->serialisation();
 		std::stringstream out;
-		actionData_.preferencesJson->write(out);
-		actionData_.preferencesJson = nullptr;
+		preferencesJson_->write(out);
+		preferencesJson_ = nullptr;
 		return out.str();
 	}
 	
@@ -533,13 +533,13 @@ public:
 	* \brief Saves the object to a JSON file
 	* \param The name of the JSON file
 	*
-	* \note It calls the overloaded saveOrLoad() method
+	* \note It calls the overloaded serialisation() method
 	* \note Not only that it's not thread-safe, it's not even reentrant
 	*/
 	inline void save(const std::string& fileName) const {
 		preferencesJson_ = std::make_shared<JSONobject>();
 		preferencesSaving_ = true;
-		const_cast<QuickPreferences*>(this)->saveOrLoad();
+		const_cast<Serialisable*>(this)->serialisation();
 		preferencesJson_->writeToFile(fileName);
 		preferencesJson_.reset();
 	}
@@ -555,21 +555,21 @@ public:
 	inline void deserialise(const std::string& source) {
 		std::stringstream sourceStream(source);
 		std::shared_ptr<JSON> target = parseJSON(source);
-		actionData_.preferencesJson = target.get();
-		if (actionData_.preferencesJson->type() == JSONtype::NIL) {
-			actionData_.preferencesJson = nullptr;
+		preferencesJson_ = target;
+		if (preferencesJson_->type() == JSONtype::NIL) {
+			preferencesJson_ = nullptr;
 			return;
 		}
-		action_ = ActionType::LOADING;
-		process();
-		actionData_.preferencesJson = nullptr;
+		preferencesSaving_ = true;
+		serialisation();
+		preferencesJson_ = nullptr;
 	}
 
 	/*!
 	* \brief Loads the object from a JSON file
 	* \param The name of the JSON file
 	*
-	* \note It calls the overloaded saveOrLoad() method
+	* \note It calls the overloaded serialisation() method
 	* \note If the file cannot be read, nothing is done
 	* \note Not only that it's not thread-safe, it's not even reentrant
 	*/
@@ -580,9 +580,9 @@ public:
 			return;
 		}
 		preferencesSaving_ = false;
-		saveOrLoad();
+		serialisation();
 		preferencesJson_.reset();
 	}
 };
 
-#endif //QUICK_PREFERENCES_HPP
+#endif //SERIALISABLE_BY_DUGI_HPP

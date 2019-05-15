@@ -7,26 +7,26 @@ It contains a small JSON library to avoid a dependency on a library that is prob
 
 ## Usage
 
-Have your classes inherit from the QuickPreferences class. They have to implement a `saveOrLoad()` method that calls overloads of the `synch()` method that accepts name of the value in the file as first argument and the value (taken as reference) as the second one. If something needs to be processed before saving or after loading, the `saving()` method will return a bool value telling if it's being saved.
+Have your classes inherit from the Serialisable class. They have to implement a `serialisation()` method that calls overloads of the `synch()` method that accepts name of the value in the file as first argument and the value (taken as reference) as the second one. If something needs to be processed before saving or after loading, the `saving()` method will return a bool value telling if it's being saved.
 
-Supported types are `std::string`, arithmetic types (converted to `double` because of JSON's specifications), `bool`, any object derived from `QuickPreferences`, a `std::vector` of such objects or a `std::vector` of smart pointers to such objects (raw pointers will not be deleted if `load()` is called while the vector is not empty).
+Supported types are `std::string`, arithmetic types (converted to `double` because of JSON's specifications), `bool`, any object derived from `Serialisable`, a `std::vector` of such objects or a `std::vector` of smart pointers to such objects (raw pointers will not be deleted if `load()` is called while the vector is not empty).
 
-Default values should be set somewhere, because if `load()` does not find the specified file, it does not call the `saveOrLoad()` method.
+Default values should be set somewhere, because if `load()` does not find the specified file, it does not call the `serialisation()` method.
 
 Missing keys will simply not write the value. Values of wrong types will throw.
 
 ```C++
-struct Chapter : public QuickPreferences {
+struct Chapter : public Serialisable {
 	std::string contents = "";
 	std::string author = "Anonymous";
 
-	virtual void saveOrLoad() {
+	virtual void serialisation() {
 		synch("contents", contents);
 		synch("author", author);
 	}
 };
 
-struct Preferences : public QuickPreferences {
+struct Preferences : public Serialisable {
 	std::string lastFolder = "";
 	unsigned int lastOpen = 0;
 	bool privileged = false;
@@ -35,7 +35,7 @@ struct Preferences : public QuickPreferences {
 	std::vector<std::shared_ptr<Chapter>> footnotes;
 	std::vector<std::unique_ptr<Chapter>> addenda;
 
-	virtual void saveOrLoad() {
+	virtual void serialisation() {
 		synch("last_folder", lastFolder);
 		synch("last_open", lastOpen);
 		synch("privileged", privileged);
@@ -65,28 +65,28 @@ The JSON library provided is only to avoid having additional dependencies. It's 
 If you really need to use it, for example if you are sure you will not use it much, here is an example:
 
 ``` C++
-QuickPreferences::JSONobject testJson;
-testJson.getObject()["file"] = std::make_shared<QuickPreferences::JSONstring>("test.json");
-testJson.getObject()["number"] = std::make_shared<QuickPreferences::JSONdouble>(9);
-testJson.getObject()["makes_sense"] = std::make_shared<QuickPreferences::JSONbool>(false);
-std::shared_ptr<QuickPreferences::JSONarray> array = std::make_shared<QuickPreferences::JSONarray>();
+Serialisable::JSONobject testJson;
+testJson.getObject()["file"] = std::make_shared<Serialisable::JSONstring>("test.json");
+testJson.getObject()["number"] = std::make_shared<Serialisable::JSONdouble>(9);
+testJson.getObject()["makes_sense"] = std::make_shared<Serialisable::JSONbool>(false);
+std::shared_ptr<Serialisable::JSONarray> array = std::make_shared<Serialisable::JSONarray>();
 for (int i = 0; i < 3; i++) {
-	std::shared_ptr<QuickPreferences::JSONobject> obj = std::make_shared<QuickPreferences::JSONobject>();
-	obj->getObject()["index"] = std::make_shared<QuickPreferences::JSONdouble>(i);
-	std::shared_ptr<QuickPreferences::JSONobject> obj2 = std::make_shared<QuickPreferences::JSONobject>();
+	std::shared_ptr<Serialisable::JSONobject> obj = std::make_shared<Serialisable::JSONobject>();
+	obj->getObject()["index"] = std::make_shared<Serialisable::JSONdouble>(i);
+	std::shared_ptr<Serialisable::JSONobject> obj2 = std::make_shared<Serialisable::JSONobject>();
 	obj->getObject()["contents"] = obj2;
-	obj2->getObject()["empty"] = std::make_shared<QuickPreferences::JSONobject>();
+	obj2->getObject()["empty"] = std::make_shared<Serialisable::JSONobject>();
 	array->getVector().push_back(obj);
 }
 testJson.getObject()["data"] = array;
 testJson.writeToFile("test.json");
 
-std::shared_ptr<QuickPreferences::JSON> testReadJson = QuickPreferences::parseJSON("test.json");
+std::shared_ptr<Serialisable::JSON> testReadJson = Serialisable::parseJSON("test.json");
 testReadJson->getObject()["makes_sense"]->getBool() = true;
 testReadJson->getObject()["number"]->getDouble() = 42;
 testReadJson->writeToFile("test-reread.json");
 ```
 
-The structure consists of JSON nodes of various types. They all have the same methods for accessing the contents returning references to the correct types (`getString()`, `getDouble()`, `getBool()`, `getObject()` and `getArray()`), but they are all virtual and only the correct one will not throw an exception. The type can be learned using the `type()` method. The interface class `QuickPreferences::JSON` is also the _null_ type.
+The structure consists of JSON nodes of various types. They all have the same methods for accessing the contents returning references to the correct types (`getString()`, `getDouble()`, `getBool()`, `getObject()` and `getArray()`), but they are all virtual and only the correct one will not throw an exception. The type can be learned using the `type()` method. The interface class `Serialisable::JSON` is also the _null_ type.
 
 The parser can parse incorrect code in some cases because some of the information in JSON files is redundant.
