@@ -512,6 +512,24 @@ protected:
 
 public:
 	/*!
+	* \brief Serialises the object to a JSON string
+	* \return The JSON string
+	*
+	* \note It calls the overloaded process() method
+	* \note Not only that it's not thread-safe, it's not even reentrant
+	*/
+	inline std::string serialise() const {
+		std::shared_ptr<JSON> target = std::make_shared<JSONobject>();
+		actionData_.preferencesJson = target.get();
+		action_ = ActionType::SAVING;
+		const_cast<QuickPreferences*>(this)->process();
+		std::stringstream out;
+		actionData_.preferencesJson->write(out);
+		actionData_.preferencesJson = nullptr;
+		return out.str();
+	}
+	
+	/*!
 	* \brief Saves the object to a JSON file
 	* \param The name of the JSON file
 	*
@@ -524,6 +542,27 @@ public:
 		const_cast<QuickPreferences*>(this)->saveOrLoad();
 		preferencesJson_->writeToFile(fileName);
 		preferencesJson_.reset();
+	}
+
+	/*!
+	* \brief Loads the object from a JSON string
+	* \param The JSON string
+	*
+	* \note It calls the overloaded process() method
+	* \note If the string is blank, nothing is done
+	* \note Not only that it's not thread-safe, it's not even reentrant
+	*/
+	inline void deserialise(const std::string& source) {
+		std::stringstream sourceStream(source);
+		std::shared_ptr<JSON> target = parseJSON(source);
+		actionData_.preferencesJson = target.get();
+		if (actionData_.preferencesJson->type() == JSONtype::NIL) {
+			actionData_.preferencesJson = nullptr;
+			return;
+		}
+		action_ = ActionType::LOADING;
+		process();
+		actionData_.preferencesJson = nullptr;
 	}
 
 	/*!
