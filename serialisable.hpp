@@ -390,7 +390,7 @@ protected:
 			auto found = preferencesJson_->getObject().find(key);
 			if (found != preferencesJson_->getObject().end()) {
 				if (found->second->type() != JSONtype::NIL) {
-					value = new typename std::remove_reference<decltype(*std::declval<T>())>::type();
+					value = std::move(T(new typename std::remove_reference<decltype(*std::declval<T>())>::type()));
 					synch(key, *value);
 				} else
 					value = nullptr;
