@@ -24,6 +24,7 @@ public:
 		NIL,
 		STRING,
 		NUMBER,
+		INTEGER,
 		BOOL,
 		ARRAY,
 		OBJECT
@@ -37,6 +38,9 @@ public:
 		}
 		inline virtual double& getDouble() {
 			throw(std::runtime_error("Double value is not really double"));
+		}
+		inline virtual int64_t& getInt() {
+			throw(std::runtime_error("Integer value is not really integer"));
 		}
 		inline virtual bool& getBool() {
 			throw(std::runtime_error("Bool value is not really bool"));
@@ -102,6 +106,23 @@ public:
 			return JSONtype::NUMBER;
 		}
 		inline virtual double& getDouble() {
+			return value_;
+		}
+		inline void write(std::ostream& out, int = 0) {
+			out << value_;
+			double whole;
+			if (std::modf(value_, &whole) == 0)
+				out << ".0";
+		}
+	};
+	struct JSONint : public JSON {
+		int64_t value_;
+		JSONint(int64_t from = 0) : value_(from) {}
+
+		inline virtual JSONtype type() {
+			return JSONtype::INTEGER;
+		}
+		inline virtual int64_t& getInt() {
 			return value_;
 		}
 		inline void write(std::ostream& out, int = 0) {
@@ -238,15 +259,25 @@ public:
 		else if (letter == '-' || (letter >= '0' && letter <= '9')) {
 			std::string asString;
 			asString.push_back(letter);
+			bool hasDecimal = false;
 			do {
 				letter = in.get();
+				if (!hasDecimal && letter == '.')
+					hasDecimal = true;
 				asString.push_back(letter);
 			} while (letter == '-' || letter == 'E' || letter == 'e' || letter == ',' || letter == '.' || (letter >= '0' && letter <= '9'));
 			in.unget();
 			std::stringstream parsing(asString);
-			double number;
-			parsing >> number;
-			return std::make_shared<JSONdouble>(number);
+			if (hasDecimal) {
+				double number;
+				parsing >> number;
+				return std::make_shared<JSONdouble>(number);
+			}
+			else {
+				int64_t number;
+				parsing >> number;
+				return std::make_shared<JSONint>(number);
+			}
 		}
 		else if (letter == '{') {
 			auto retval = std::make_shared<JSONobject>();
@@ -334,7 +365,7 @@ protected:
 	* \note The value is converted from and to a double for JSON conformity
 	*/
 	template<typename T>
-	typename std::enable_if<std::is_arithmetic<T>::value && !std::is_same<T, bool>::value, bool>::type
+	typename std::enable_if<std::is_floating_point<T>::value, bool>::type
 	synch(const std::string& key, T& value) {
 		if (preferencesSaving_) {
 			preferencesJson_->getObject()[key] = std::make_shared<JSONdouble>(double(value));
@@ -342,6 +373,48 @@ protected:
 			auto found = preferencesJson_->getObject().find(key);
 			if (found != preferencesJson_->getObject().end()) {
 				value = T(found->second->getDouble());
+			} return false;
+		}
+		return true;
+	}
+
+	/*!
+	* \brief Saves or loads an arithmetic integer value
+	* \param The name of the value in the output/input file
+	* \param Reference to the value
+	* \return false if the value was absent while reading, true otherwise
+	*/
+	template<typename T>
+	typename std::enable_if<std::is_integral<T>::value, bool>::type
+		synch(const std::string& key, T& value) {
+		if (preferencesSaving_) {
+			preferencesJson_->getObject()[key] = std::make_shared<JSONint>(int64_t(value));
+		}
+		else {
+			auto found = preferencesJson_->getObject().find(key);
+			if (found != preferencesJson_->getObject().end()) {
+				value = T(found->second->getInt());
+			} return false;
+		}
+		return true;
+	}
+
+	/*!
+	* \brief Saves or loads an enum as integer
+	* \param The name of the value in the output/input file
+	* \param Reference to the value
+	* \return false if the value was absent while reading, true otherwise
+	*/
+	template<typename T>
+	typename std::enable_if<std::is_enum<T>::value, bool>::type
+		synch(const std::string& key, T& value) {
+		if (preferencesSaving_) {
+			preferencesJson_->getObject()[key] = std::make_shared<JSONint>(int(value));
+		}
+		else {
+			auto found = preferencesJson_->getObject().find(key);
+			if (found != preferencesJson_->getObject().end()) {
+				value = T(found->second->getInt());
 			} return false;
 		}
 		return true;
