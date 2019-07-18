@@ -409,7 +409,7 @@ protected:
 	typename std::enable_if<std::is_enum<T>::value, bool>::type
 		synch(const std::string& key, T& value) {
 		if (preferencesSaving_) {
-			preferencesJson_->getObject()[key] = std::make_shared<JSONint>(int(value));
+			preferencesJson_->getObject()[key] = std::make_shared<JSONint>(std::underlying_type_t<T>(value));
 		}
 		else {
 			auto found = preferencesJson_->getObject().find(key);
