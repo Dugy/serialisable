@@ -554,13 +554,13 @@ public:
 	*/
 	inline void deserialise(const std::string& source) {
 		std::stringstream sourceStream(source);
-		std::shared_ptr<JSON> target = parseJSON(source);
+		std::shared_ptr<JSON> target = parseJSON(sourceStream);
 		preferencesJson_ = target;
 		if (preferencesJson_->type() == JSONtype::NIL) {
 			preferencesJson_ = nullptr;
 			return;
 		}
-		preferencesSaving_ = true;
+		preferencesSaving_ = false;
 		serialisation();
 		preferencesJson_ = nullptr;
 	}
