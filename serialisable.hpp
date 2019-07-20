@@ -16,6 +16,7 @@
 #include <exception>
 #include <sstream>
 #include <type_traits>
+#include <cmath>
 
 class Serialisable {
 
