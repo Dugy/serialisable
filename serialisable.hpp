@@ -24,7 +24,7 @@ public:
 	enum class JSONtype : uint8_t {
 		NIL,
 		STRING,
-		NUMBER,
+		DOUBLE,
 		INTEGER,
 		BOOL,
 		ARRAY,
@@ -104,7 +104,7 @@ public:
 		JSONdouble(double from = 0) : value_(from) {}
 
 		inline virtual JSONtype type() {
-			return JSONtype::NUMBER;
+			return JSONtype::DOUBLE;
 		}
 		inline virtual double& getDouble() {
 			return value_;
@@ -130,6 +130,26 @@ public:
 			out << value_;
 		}
 	};
+private:
+	struct JSONdoubleOrInt : public JSON {
+		int64_t valueInt_;
+		double valueDouble_;
+		JSONdoubleOrInt(int64_t from = 0) : valueInt_(from), valueDouble_(double(from)) {}
+
+		inline virtual JSONtype type() {
+			return JSONtype::INTEGER;
+		}
+		inline virtual int64_t& getInt() {
+			return valueInt_;
+		}
+		inline virtual double& getDouble() {
+			return valueDouble_;
+		}
+		inline void write(std::ostream& out, int = 0) {
+			out << valueInt_;
+		}
+	};
+public:
 	struct JSONbool : public JSON {
 		bool value_;
 		JSONbool(bool from = false) : value_(from) {}
@@ -277,7 +297,7 @@ public:
 			else {
 				int64_t number;
 				parsing >> number;
-				return std::make_shared<JSONint>(number);
+				return std::make_shared<JSONdoubleOrInt>(number); // It may happen to be actually meant as double
 			}
 		}
 		else if (letter == '{') {
