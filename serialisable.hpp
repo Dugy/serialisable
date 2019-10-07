@@ -1,7 +1,7 @@
 /*
 * \brief Class convenient and duplication-free serialisation and deserialisation of its descendants into JSON, with one function to handle both loading and saving
 *
-* See more at https://github.com/Dugy/quick_preferences
+* See more at https://github.com/Dugy/serialisable
 */
 
 #ifndef SERIALISABLE_BY_DUGI_HPP
