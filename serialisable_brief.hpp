@@ -35,12 +35,12 @@ class SerialisableBriefListing {
 };
 
 class SerialisableBrief : public Serialisable {
-	std::function<void(SerialisableBrief*)>* _serialiser = nullptr;
 	struct SerialisationSetupData {
 		std::string serialiserString;
 		int currentSize = sizeof(SerialisableBrief);
 	};
 	std::unique_ptr<SerialisationSetupData> _setupData = std::make_unique<SerialisationSetupData>();
+	std::function<void(SerialisableBrief*)>* _serialiser = nullptr;
 
 	int addElementToOffset(unsigned int size) {
 		if (size == 1)
@@ -71,7 +71,8 @@ class SerialisableBrief : public Serialisable {
 		SerialisableBriefListing& instance = SerialisableBriefListing::getInstance();
 		std::string& serialiserString = _setupData->serialiserString;
 		std::function<void(SerialisableBrief*)>* previousSerialiser = instance.getSerialiserFor(serialiserString);
-		_setupData->serialiserString.append(name);
+
+		serialiserString.append(name);
 		const auto typeNum = typeid(T).hash_code();
 		for (unsigned int i = 0; i < sizeof(typeNum); i++) {
 			serialiserString.push_back(reinterpret_cast<const unsigned char*>(&typeNum)[i]);
@@ -91,9 +92,10 @@ class SerialisableBrief : public Serialisable {
 		SerialisableBriefListing& instance = SerialisableBriefListing::getInstance();
 		std::string& serialiserString = _setupData->serialiserString;
 		std::function<void(SerialisableBrief*)>* previousSerialiser = instance.getSerialiserFor(serialiserString);
-		const auto typeNum = typeid(T).hash_code();
-		for (unsigned int i = 0; i < sizeof(typeNum); i++) {
-			serialiserString.push_back(reinterpret_cast<const unsigned char*>(&typeNum)[i]);
+
+		const auto typeSize = sizeof(T);
+		for (unsigned int i = 0; i < 3; i++) {
+			serialiserString.push_back(reinterpret_cast<const unsigned char*>(&typeSize)[i]);
 		}
 		addElementToOffset(sizeof(T));
 		if (!instance.serialiserDone(serialiserString))
@@ -137,11 +139,12 @@ protected:
 		template <typename T>
 		operator T() {
 			if (_serialised) _parent->addSerialiser<T>(_name);
-			else _parent->addElementToOffset(sizeof(T));
+			else _parent->addNonserialiser<T>();
 			return makeType<T>(typename NumberGenerator<sizeof...(Args)>::Type());
 		}
 		friend class SerialisableBrief;
 	};
+
 	class SubSerialiser {
 		SerialisableBrief* _parent;
 		std::string _name;
@@ -157,7 +160,7 @@ protected:
 		template <typename T>
 		operator T() {
 			if (_serialised) _parent->addSerialiser<T>(_name);
-			else _parent->addElementToOffset(sizeof(T));
+			else _parent->addNonserialiser<T>();
 			return T();
 		}
 		friend class SerialisableBrief;
