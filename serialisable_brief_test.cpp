@@ -7,25 +7,25 @@ enum DocumentType {
 };
 
 struct Chapter : public SerialisableBrief {
-	std::string contents = bound("contents");
-	std::string author = bound("author").init("Anonymous");
+	std::string contents = key("contents");
+	std::string author = key("author").init("Anonymous");
 };
 
 struct Preferences : public SerialisableBrief {
-	std::string lastFolder = bound("last_folder").init("");
-	unsigned int lastOpen = bound("last_open").init(0);
-	int daysUntilPublication = bound("days_until_publication", -5);
-	uint64_t maxFilesAllowed = bound("max_files_allowed", UINT64_MAX);
-	double relativeValue = bound("relative_value").init(0.45);
-	bool privileged = bound("privileged", false);
-	int reusableVariable = unbound(3);
-	char reusableVariable2 = unbound().init('a');
-	DocumentType documentType = bound("document_type", BOOK);
-	Chapter info = bound("info");
-	std::vector<Chapter> chapters = bound("chapters").init(3, Chapter());
-	std::vector<std::shared_ptr<Chapter>> footnotes = bound("footnotes");
-	std::vector<std::unique_ptr<Chapter>> addenda = bound("addenda");
-	std::string* editorsNote = bound("editors_notes", nullptr);
+	std::string lastFolder = key("last_folder").init("");
+	unsigned int lastOpen = key("last_open").init(0);
+	int daysUntilPublication = key("days_until_publication", -5);
+	uint64_t maxFilesAllowed = key("max_files_allowed", UINT64_MAX);
+	double relativeValue = key("relative_value").init(0.45);
+	bool privileged = key("privileged", false);
+	int reusableVariable = skip(3);
+	char reusableVariable2 = skip().init('a');
+	DocumentType documentType = key("document_type", BOOK);
+	Chapter info = key("info");
+	std::vector<Chapter> chapters = key("chapters").init(3, Chapter());
+	std::vector<std::shared_ptr<Chapter>> footnotes = key("footnotes");
+	std::vector<std::unique_ptr<Chapter>> addenda = key("addenda");
+	std::string* editorsNote = key("editors_notes", nullptr);
 };
 
 int main() {

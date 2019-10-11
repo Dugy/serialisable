@@ -173,21 +173,21 @@ protected:
 	SerialisableBrief() = default;
 	SerialisableBrief(SerialisableBrief&&) = default;
 
-	SubSerialiser bound(const std::string& name) {
+	SubSerialiser key(const std::string& name) {
 		return SubSerialiser(this, name, true);
 	}
 
 	template <typename T, typename... Ts>
-	SubSerialiserInitialised<T, Ts...> bound(const std::string& name, T firstArg, Ts... otherArgs) {
+	SubSerialiserInitialised<T, Ts...> key(const std::string& name, T firstArg, Ts... otherArgs) {
 		return SubSerialiserInitialised<T, Ts...>(this, name, true, firstArg, otherArgs...);
 	}
 
-	SubSerialiser unbound() {
+	SubSerialiser skip() {
 		return SubSerialiser(this, "", false);
 	}
 
 	template <typename T, typename... Ts>
-	SubSerialiserInitialised<T, Ts...> unbound(T firstArg, Ts... otherArgs) {
+	SubSerialiserInitialised<T, Ts...> skip(T firstArg, Ts... otherArgs) {
 		return SubSerialiserInitialised<T, Ts...>(this, "", false, firstArg, otherArgs...);
 	}
 
