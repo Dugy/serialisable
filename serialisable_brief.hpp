@@ -166,12 +166,18 @@ protected:
 		friend class SerialisableBrief;
 	};
 
-	SerialisableBrief(const SerialisableBrief& other) {
+	SerialisableBrief(const SerialisableBrief& other)
+		: _setupData(nullptr) {
 		other.finishUp();
 		_serialiser = other._serialiser;
 	}
 	SerialisableBrief() = default;
-	SerialisableBrief(SerialisableBrief&&) = default;
+
+	SerialisableBrief(SerialisableBrief&& other)
+		: _setupData(nullptr) {
+		other.finishUp();
+		_serialiser = other._serialiser;
+	}
 
 	SubSerialiser key(const std::string& name) {
 		return SubSerialiser(this, name, true);
