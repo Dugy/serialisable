@@ -56,7 +56,32 @@ prefs.load("prefs.json");
 prefs.save("prefs.json");
 ```
 
-It relies only on standard libraries, so you can use any C++11 compliant compiler to compile it.
+It relies only on standard libraries, so you can use any C++14 compliant compiler to compile it.
+
+## SerialisableBrief - write even less code
+
+To write even less code for serialisation, you can use `SerialisableBrief`, a wrapper above `Serialisable`. It's in its separate header file.
+
+It allows serialising with even less code:
+```C++
+struct Chapter : public SerialisableBrief {
+	std::string contents = key("contents");
+	std::string author = key("author").init("Anonymous");
+};
+```
+It does the same as the `Chapter` class in the section above. The members must be initialised with the `key()` method, whose argument is the key of the field in JSON. The members can be optionally initialised using the `init()` method that takes any number of arguments that will be fed to the constructor (if not used, it will be default-initialised; brace-enclosed initialisers cannot be used). This can be shortened by adding any number of arguments after the first argument to the `key()` method, the additional arguments will be given to the constructor. This uses `Serialisable` to actually convert the variables to JSON, so it can serialise the same types as `Serialisable` can.
+
+```C++
+struct ChapterInfo : public SerialisableBrief {
+	std::mutex lock = skip();
+	int pages = key("pages").init(100);
+	std::string summary = key("summary", "Some interesting stuff");
+};
+```
+
+**Important:** if a member is *not* to be serialised, it has to be initialised with the `skip()` method (optionally taking constructor arguments; usable also for types that cannot be serialised by `Serialisable`). Otherwise, undefined behaviour is very likely to occur when serialising/deserialising the next member, without any warning. This applies also to any classes that inherit from it unless none of them uses any serialisation. Therefore, this should be used only for classes that hold data and don't have much other functionality. You have been warned.
+
+The cost of this brevity is proneness to human errors, obscure code and lower performance, especially when constructing the objects. To avoid forgetting the `skip()` method, it's better to use `Serialisable` instead for more complex classes that aren't only for storing data. To avoid unnecessary inefficiency, it's recommended to copy or move the objects instead of creating new ones.
 
 ## JSON library
 
