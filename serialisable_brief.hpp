@@ -10,7 +10,6 @@
 #include <tuple>
 #include <functional>
 #include "serialisable.hpp"
-
 class SerialisableBrief;
 
 class SerialisableBriefListing {
@@ -42,25 +41,26 @@ class SerialisableBrief : public Serialisable {
 	std::unique_ptr<SerialisationSetupData> _setupData = std::make_unique<SerialisationSetupData>();
 	std::function<void(SerialisableBrief*)>* _serialiser = nullptr;
 
-	int addElementToOffset(unsigned int size) {
-		if (size == 1)
+	template<typename T>
+	int addElementToOffset() {
+		if (sizeof(T) == 1)
 			return _setupData->currentSize++;
-		else if (size == 2) {
+		else if (sizeof(T) == 2) {
 			if (_setupData->currentSize % 2) _setupData->currentSize++;
 			int retval = _setupData->currentSize;
 			_setupData->currentSize += 2;
 			return retval;
 		}
-		else if (size == 4 || (sizeof(void*) == 4 && size >= 4)) {
+		else if (sizeof(T) == 4 || (sizeof(void*) == 4 && sizeof(T) >= 4 && !(std::is_fundamental<T>::value && sizeof(T) == 8))) {
 			if (_setupData->currentSize % 4) _setupData->currentSize += 4 - _setupData->currentSize % 4;
 			int retval = _setupData->currentSize;
-			_setupData->currentSize += 4;
+			_setupData->currentSize += sizeof(T);
 			return retval;
 		}
-		else if (size % 8 == 0) {
+		else if (sizeof(T) % 8 == 0) {
 			if (_setupData->currentSize % 8) _setupData->currentSize += 8 - _setupData->currentSize % 8;
 			int retval = _setupData->currentSize;
-			_setupData->currentSize += size;
+			_setupData->currentSize += sizeof(T);
 			return retval;
 		}
 		throw(std::logic_error("Invalid class serialised, not sure how it got into runtime"));
@@ -77,7 +77,7 @@ class SerialisableBrief : public Serialisable {
 		for (unsigned int i = 0; i < sizeof(typeNum); i++) {
 			serialiserString.push_back(reinterpret_cast<const unsigned char*>(&typeNum)[i]);
 		}
-		int position = addElementToOffset(sizeof(T));
+		int position = addElementToOffset<T>();
 		if (!instance.serialiserDone(serialiserString)) {
 			instance.addSerialiser(serialiserString, [previousSerialiser, position, name] (SerialisableBrief* self) {
 				(*previousSerialiser)(self);
@@ -97,7 +97,7 @@ class SerialisableBrief : public Serialisable {
 		for (unsigned int i = 0; i < 3; i++) {
 			serialiserString.push_back(reinterpret_cast<const unsigned char*>(&typeSize)[i]);
 		}
-		addElementToOffset(sizeof(T));
+		addElementToOffset<T>();
 		if (!instance.serialiserDone(serialiserString))
 			instance.addSerialiser(serialiserString, *previousSerialiser);
 	}
@@ -136,33 +136,37 @@ protected:
 			return T(std::get<Enumeration>(_args)...);
 		}
 	public:
+#if _MSC_VER && !__INTEL_COMPILER
+		template <class T>
+		struct isInitializerList : std::false_type {};
+
+		template <class T>
+		struct isInitializerList<std::initializer_list<T>> : std::true_type {};
+
+		template<typename T, std::enable_if_t<(std::is_class_v<T> && !isInitializerList<T>::value)
+			|| std::is_arithmetic_v<T> || std::is_floating_point_v<T> || std::is_enum_v<T>>* = nullptr>
+#else
 		template <typename T>
+#endif
 		operator T() {
 			if (_serialised) _parent->addSerialiser<T>(_name);
 			else _parent->addNonserialiser<T>();
 			return makeType<T>(typename NumberGenerator<sizeof...(Args)>::Type());
 		}
 		friend class SerialisableBrief;
+		friend class SubSerialiser;
 	};
 
-	class SubSerialiser {
-		SerialisableBrief* _parent;
-		std::string _name;
-		bool _serialised;
+	class SubSerialiser : public SubSerialiserInitialised<> {
 		SubSerialiser(SerialisableBrief* parent, const std::string& name, bool serialised) :
-			_parent(parent), _name(name), _serialised(serialised) {
+			SubSerialiserInitialised<>(parent, name, serialised) {
 		}
 	public:
 		template <typename... Args>
 		SubSerialiserInitialised<Args...> init(Args... args) {
 			return SubSerialiserInitialised<Args...>(_parent, _name, _serialised, args...);
 		}
-		template <typename T>
-		operator T() {
-			if (_serialised) _parent->addSerialiser<T>(_name);
-			else _parent->addNonserialiser<T>();
-			return T();
-		}
+		
 		friend class SerialisableBrief;
 	};
 
@@ -178,6 +182,8 @@ protected:
 		other.finishUp();
 		_serialiser = other._serialiser;
 	}
+
+	virtual ~SerialisableBrief() = default;
 
 	SubSerialiser key(const std::string& name) {
 		return SubSerialiser(this, name, true);

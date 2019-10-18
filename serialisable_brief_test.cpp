@@ -25,7 +25,7 @@ struct Preferences : public SerialisableBrief {
 	std::vector<Chapter> chapters = key("chapters").init(3, Chapter());
 	std::vector<std::shared_ptr<Chapter>> footnotes = key("footnotes");
 	std::vector<std::unique_ptr<Chapter>> addenda = key("addenda");
-	std::string* editorsNote = key("editors_notes", nullptr);
+//	std::string* editorsNote = key("editors_notes", nullptr);
 };
 
 int main() {
