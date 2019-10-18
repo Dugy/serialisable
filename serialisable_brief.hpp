@@ -42,64 +42,35 @@ class SerialisableBrief : public Serialisable {
 	std::function<void(SerialisableBrief*)>* _serialiser = nullptr;
 
 	template<typename T>
-	int addElementToOffset() {
+	int addElementToOffset(uint64_t ellisionOffset) {
+		auto check = [ellisionOffset] (int signedOffset) {
+			uint64_t offset = uint64_t(signedOffset);
+			std::cout << "Offsets " << offset << " " << ellisionOffset << std::endl;
+			if (ellisionOffset - offset < 0xffff && ellisionOffset > offset)
+				throw(std::logic_error("Offset misprediction detected, very probably a call to skip() was forgotten"));
+			return signedOffset;
+		};
 		if (sizeof(T) == 1)
-			return _setupData->currentSize++;
+			return check(_setupData->currentSize++);
 		else if (sizeof(T) == 2) {
 			if (_setupData->currentSize % 2) _setupData->currentSize++;
 			int retval = _setupData->currentSize;
 			_setupData->currentSize += 2;
-			return retval;
+			return check(retval);
 		}
 		else if (sizeof(T) == 4 || (sizeof(void*) == 4 && sizeof(T) >= 4 && !(std::is_fundamental<T>::value && sizeof(T) == 8))) {
 			if (_setupData->currentSize % 4) _setupData->currentSize += 4 - _setupData->currentSize % 4;
 			int retval = _setupData->currentSize;
 			_setupData->currentSize += sizeof(T);
-			return retval;
+			return check(retval);
 		}
 		else if (sizeof(T) % 8 == 0) {
 			if (_setupData->currentSize % 8) _setupData->currentSize += 8 - _setupData->currentSize % 8;
 			int retval = _setupData->currentSize;
 			_setupData->currentSize += sizeof(T);
-			return retval;
+			return check(retval);
 		}
 		throw(std::logic_error("Invalid class serialised, not sure how it got into runtime"));
-	}
-
-	template <typename T>
-	void addSerialiser(const std::string& name) {
-		SerialisableBriefListing& instance = SerialisableBriefListing::getInstance();
-		std::string& serialiserString = _setupData->serialiserString;
-		std::function<void(SerialisableBrief*)>* previousSerialiser = instance.getSerialiserFor(serialiserString);
-
-		serialiserString.append(name);
-		const auto typeNum = typeid(T).hash_code();
-		for (unsigned int i = 0; i < sizeof(typeNum); i++) {
-			serialiserString.push_back(reinterpret_cast<const unsigned char*>(&typeNum)[i]);
-		}
-		int position = addElementToOffset<T>();
-		if (!instance.serialiserDone(serialiserString)) {
-			instance.addSerialiser(serialiserString, [previousSerialiser, position, name] (SerialisableBrief* self) {
-				(*previousSerialiser)(self);
-				T& reference = *reinterpret_cast<T*>(reinterpret_cast<uint64_t>(self) + position);
-				self->synch(name, reference);
-			});
-		}
-	}
-
-	template <typename T>
-	void addNonserialiser() {
-		SerialisableBriefListing& instance = SerialisableBriefListing::getInstance();
-		std::string& serialiserString = _setupData->serialiserString;
-		std::function<void(SerialisableBrief*)>* previousSerialiser = instance.getSerialiserFor(serialiserString);
-
-		const auto typeSize = sizeof(T);
-		for (unsigned int i = 0; i < 3; i++) {
-			serialiserString.push_back(reinterpret_cast<const unsigned char*>(&typeSize)[i]);
-		}
-		addElementToOffset<T>();
-		if (!instance.serialiserDone(serialiserString))
-			instance.addSerialiser(serialiserString, *previousSerialiser);
 	}
 
 	void finishUp() const {
@@ -149,9 +120,36 @@ protected:
 		template <typename T>
 #endif
 		operator T() {
-			if (_serialised) _parent->addSerialiser<T>(_name);
-			else _parent->addNonserialiser<T>();
-			return makeType<T>(typename NumberGenerator<sizeof...(Args)>::Type());
+			SerialisableBriefListing& instance = SerialisableBriefListing::getInstance();
+			std::string& serialiserString = _parent->_setupData->serialiserString;
+			std::function<void(SerialisableBrief*)>* previousSerialiser = instance.getSerialiserFor(serialiserString);
+			T returned = makeType<T>(typename NumberGenerator<sizeof...(Args)>::Type());
+
+			if (_serialised) {
+				serialiserString.append(_name);
+				const auto typeNum = typeid(T).hash_code();
+				for (unsigned int i = 0; i < sizeof(typeNum); i++) {
+					serialiserString.push_back(reinterpret_cast<const unsigned char*>(&typeNum)[i]);
+				}
+				int position = _parent->addElementToOffset<T>(uint64_t(&returned) - uint64_t(_parent));
+				if (!instance.serialiserDone(serialiserString)) {
+					instance.addSerialiser(serialiserString, [previousSerialiser, position, name = _name] (SerialisableBrief* self) {
+						(*previousSerialiser)(self);
+						T& reference = *reinterpret_cast<T*>(reinterpret_cast<uint64_t>(self) + position);
+						self->synch(name, reference);
+					});
+				}
+			}
+			else {
+				short int typeSize = sizeof(T);
+				for (unsigned int i = 0; i < 2; i++) {
+					serialiserString.push_back(reinterpret_cast<const unsigned char*>(&typeSize)[i]);
+				}
+				_parent->addElementToOffset<T>(uint64_t(&returned) - uint64_t(_parent));
+				if (!instance.serialiserDone(serialiserString))
+					instance.addSerialiser(serialiserString, *previousSerialiser);
+			}
+			return returned;
 		}
 		friend class SerialisableBrief;
 		friend class SubSerialiser;
@@ -166,7 +164,7 @@ protected:
 		SubSerialiserInitialised<Args...> init(Args... args) {
 			return SubSerialiserInitialised<Args...>(_parent, _name, _serialised, args...);
 		}
-		
+
 		friend class SerialisableBrief;
 	};
 
