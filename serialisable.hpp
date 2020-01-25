@@ -7,6 +7,15 @@
 #ifndef SERIALISABLE_BY_DUGI_HPP
 #define SERIALISABLE_BY_DUGI_HPP
 
+// A flag allowing to adjust the default precision when using the condensed format. Possibilities:
+// HALF_PRECISION - 15 bit float (almost half-precision), 1 bit is sign, 6 exponent, 8 mantissa, the imprecision is about 0.2%, maximal value is in the order of ten power 9
+// SINGLE_PRECISION - regular float
+// DOUBLE_PRECISION - regular double
+// Default is HALF_PRECISION
+#ifndef SERIALISABLE_BY_DUGI_CONDENSED_PREFER_PRECISION
+#define SERIALISABLE_BY_DUGI_CONDENSED_PREFER_PRECISION HALF_PRECISION
+#endif
+
 #include <vector>
 #include <string>
 #include <unordered_map>
@@ -17,12 +26,72 @@
 #include <sstream>
 #include <type_traits>
 #include <cmath>
+#include <algorithm>
 
 class Serialisable {
 
+	struct CondensedInfo {
+		enum CondensedPrefix : uint8_t {
+			HALF_PRECISION_FLOAT = 0b10000000,
+			SHORT_STRING = 0b01100000,
+			RESERVED_1 = 0b01111110,
+			LONG_STRING = 0b01111111,
+			MINIMAL_INTEGER = 0b01000000,
+			COMMON_OBJECT = 0b00111000,
+			RESERVED_2 = 0b00111101,
+			UNCOMMON_OBJECT = 0b00111110,
+			RARE_OBJECT = 0b00111111,
+			SMALL_UNIQUE_OBJECT = 0b00110000,
+			LARGE_UNIQUE_OBJECT = 0b00110110,
+			HASHTABLE= 0b00110111,
+			SHORT_ARRAY = 0b00100000,
+			RESERVED_3 = 0b00101101,
+			LONG_ARRAY = 0b00101111,
+			VERY_SHORT_INTEGER = 0b00010000,
+			DOUBLE = 0x0f,
+			FLOAT = 0x0e,
+			SIGNED_LONG_INTEGER = 0x0d,
+			UNSIGNED_LONG_INTEGER = 0x0c,
+			SIGNED_INTEGER = 0x0b,
+			UNSIGNED_INTEGER = 0x0a,
+			SIGNED_SHORT_INTEGER = 0x09,
+			UNSIGNED_SHORT_INTEGER = 0x08,
+			RESERVED_4 = 0x04,
+			TRUE = 0x03,
+			FALSE = 0x02,
+			NIL = 0x01,
+			TERMINATOR = 0x00,
+		};
+		constexpr static int MAX_SHORT_STRING_SIZE = 30;
+		constexpr static int HALF_FLOAT_EXPONENT_BITS = 6;
+		constexpr static int HALF_FLOAT_MANTISSA_BITS = 8;
+		constexpr static int MAX_SHORT_ARRAY_SIZE = 14;
+		constexpr static int MAX_COMMON_OBJECT_ID = 5;
+		constexpr static int MAX_UNCOMMON_OBJECT_ID = MAX_COMMON_OBJECT_ID + 1 + 0xff;
+		constexpr static int MAX_SMALL_UNIQUE_OBJECT_SIZE = 6;
+		constexpr static int STRING_FINAL_BIT_FLIP = 0x80;
+
+		constexpr static int HALF_PRECISION_FLOAT_MASK = 0x7f;
+		constexpr static int SHORT_STRING_MASK = 0x1f;
+		constexpr static int MINIMAL_INTEGER_MASK = 0x1f;
+		constexpr static int MINIMAL_INTEGER_NUMBER_MASK = 0x0f;
+		constexpr static int MINIMAL_INTEGER_SIGN_MASK = 0x10;
+		constexpr static int OBJECT_MASK = 0x07;
+		constexpr static int SHORT_ARRAY_MASK = 0x0f;
+		constexpr static int VERY_SHORT_INTEGER_MASK = 0x0f;
+		constexpr static int VERY_SHORT_INTEGER_SIGN_MASK = 0x08;
+		constexpr static int VERY_SHORT_INTEGER_PREFIX_MASK = 0x07;
+		constexpr static int RESERVED_4_MASK = 0x03;
+	};
+
+	struct ObjectMapEntry {
+		int index;
+		bool used = false;
+	};
+
 public:
 	enum class JSONtype : uint8_t {
-		NIL,
+		NIL, // Can't be NULL, it's a macro in C
 		STRING,
 		DOUBLE,
 		INTEGER,
@@ -60,7 +129,16 @@ public:
 			if (!out.good()) throw(std::runtime_error("Could not write to file " + fileName));
 			this->write(out, 0);
 		}
-
+		std::vector<uint8_t> condensed() {
+			std::vector<uint8_t> result;
+			auto mapping = generateObjectMapping();
+			writeCondensed(result, mapping);
+			return result;
+		}
+		inline virtual void writeCondensed(std::vector<uint8_t>& buffer,
+				std::unordered_map<std::string, ObjectMapEntry>& objectMapping) const {
+			buffer.push_back(CondensedInfo::NIL);
+		}
 		virtual ~JSON() = default;
 	protected:
 		static void writeString(std::ostream& out, const std::string& written) {
@@ -84,6 +162,30 @@ public:
 			for (int i = 0; i < depth; i++)
 				out.put('\t');
 		}
+		std::unordered_map<std::string, ObjectMapEntry> generateObjectMapping() {
+			std::unordered_map<std::string, int> list;
+			addToObjectList(list);
+
+			std::vector<std::pair<std::string, int>> ordered;
+			for (auto& it : list) {
+				ordered.push_back(std::move(it));
+			}
+			std::sort(ordered.begin(), ordered.end(), [] (std::pair<std::string, int> first, std::pair<std::string, int> second) {
+				return first.second > second.second;
+			});
+			
+			std::unordered_map<std::string, ObjectMapEntry> result;
+			for (unsigned int i = 0; i < ordered.size(); i++) {
+				if (ordered[i].second <= 1) break; // Objects with a single occurrence are not saved this way
+				if (i > 0xffff + CondensedInfo::MAX_UNCOMMON_OBJECT_ID) break; // Cannot batch so many object types
+				result[ordered[i].first] = { int(i) };
+			}
+			return result;
+		}
+		virtual void addToObjectList(std::unordered_map<std::string, int>& list) const { }
+		static void addToObjectList(std::shared_ptr<JSON> object, std::unordered_map<std::string, int>& list) {
+			object->addToObjectList(list);
+		}
 	};
 	struct JSONstring : public JSON {
 		std::string contents_;
@@ -95,13 +197,39 @@ public:
 		inline virtual std::string& getString() {
 			return contents_;
 		}
-		inline void write(std::ostream& out, int = 0) {
+		inline void write(std::ostream& out, int = 0) override {
 			writeString(out, contents_);
 		}
+		inline void writeCondensed(std::vector<uint8_t>& buffer,
+				std::unordered_map<std::string, ObjectMapEntry>& objectMapping) const override {
+			if (contents_.size() < CondensedInfo::MAX_SHORT_STRING_SIZE) {
+				buffer.push_back(CondensedInfo::SHORT_STRING + contents_.size());
+				for (auto c : contents_) {
+					buffer.push_back(static_cast<uint8_t>(c));
+				}
+			} else {
+				buffer.push_back(CondensedInfo::LONG_STRING);
+				for (auto c : contents_) {
+					buffer.push_back(static_cast<uint8_t>(c));
+				}
+				buffer.push_back(CondensedInfo::TERMINATOR);
+			}
+		}
+	protected:
+		void addToObjectList(std::unordered_map<std::string, int>& list) const override { }
 	};
 	struct JSONdouble : public JSON {
 		double value_;
-		JSONdouble(double from = 0) : value_(from) {}
+		enum class Hint : uint8_t {
+			ABSENT,
+			HALF_PRECISION,
+			SINGLE_PRECISION,
+			DOUBLE_PRECISION,
+		};
+		mutable Hint _hint;
+
+
+		JSONdouble(double from = 0, Hint hint = Hint::ABSENT) : value_(from), _hint(hint) {}
 
 		inline virtual JSONtype type() {
 			return JSONtype::DOUBLE;
@@ -109,12 +237,58 @@ public:
 		inline virtual double& getDouble() {
 			return value_;
 		}
-		inline void write(std::ostream& out, int = 0) {
-			out << value_;
-			double whole;
-			if (std::modf(value_, &whole) == 0)
+		inline void write(std::ostream& out, int = 0) override {
+			std::stringstream stream;
+			stream << value_;
+			std::string made = stream.str();
+			out << made;
+			if (made.find('.') == std::string::npos && made.find('e') == std::string::npos && made.find('e') == std::string::npos)
 				out << ".0";
 		}
+		void updateCondensedSizeHint() const {
+			uint64_t triedBinary = *reinterpret_cast<const uint64_t*>(&value_);
+			double tried = fabs(value_);
+			_hint = Hint::DOUBLE_PRECISION;
+			if (tried > std::numeric_limits<float>::max() || (tried < std::numeric_limits<float>::min() && tried > 0))
+				return; // Leave double, number is outside range
+			if (Hint::SERIALISABLE_BY_DUGI_CONDENSED_PREFER_PRECISION != Hint::DOUBLE_PRECISION || float(tried) == tried || (triedBinary & 0x00000000fffffffc)) {
+				// Either double is not preferred or it won't lose precision anyway or there are a lot of trailing blank bits
+				_hint = Hint::SINGLE_PRECISION;
+				constexpr float MAX_HALF_PRECISION = 8.57316e+09;
+				constexpr float MIN_HALF_PRECISION_POSITIVE = 9.34961e-10;
+				if (tried > MAX_HALF_PRECISION || (tried < MIN_HALF_PRECISION_POSITIVE && tried > 0))
+					return; // Leave float
+				if (Hint::SERIALISABLE_BY_DUGI_CONDENSED_PREFER_PRECISION == Hint::HALF_PRECISION || (triedBinary & 0x007ffffffffffffc)) {
+					// Either float is not preferred or there are really a lot of trailing blank bits
+					_hint = Hint::HALF_PRECISION;
+				}
+			}
+		}
+		inline void writeCondensed(std::vector<uint8_t>& buffer,
+				std::unordered_map<std::string, ObjectMapEntry>& objectMapping) const override {
+			if (_hint == Hint::ABSENT) updateCondensedSizeHint();
+			if (_hint == Hint::HALF_PRECISION) {
+				uint64_t source = *reinterpret_cast<const uint64_t*>(&value_);
+				uint8_t result = 0x80 | ((source & 0x8000000000000000) >> 57); // Identification prefix and sign (1 + 1 bits)
+				result |= ((source & 0x7ff0000000000000) >> 52) - 0x3e0; // Exponent (6 bits)
+				buffer.push_back(result);
+				buffer.push_back((source & 0x000fffffffffffff) >> 44); // Mantissa (1 byte)
+			} else if (_hint == Hint::SINGLE_PRECISION) {
+				buffer.push_back(CondensedInfo::FLOAT);
+				float asFloat = float(value_);
+				uint32_t extractor = *reinterpret_cast<const uint32_t*>(&asFloat);
+				for (int i = 0; i < sizeof(float) * 8; i += 8) {
+					buffer.push_back((extractor & (0xff << i)) >> i);
+				}
+			} else if (_hint == Hint::DOUBLE_PRECISION) {
+				buffer.push_back(CondensedInfo::DOUBLE);
+				uint64_t extractor = *reinterpret_cast<const uint64_t*>(&value_);
+				for (int i = 0; i < sizeof(double) * 8; i += 8)
+					buffer.push_back((extractor & (0xffull << i)) >> i);
+			}
+		}
+	protected:
+		void addToObjectList(std::unordered_map<std::string, int>& list) const override { }
 	};
 	struct JSONint : public JSON {
 		int64_t value_;
@@ -129,24 +303,42 @@ public:
 		inline void write(std::ostream& out, int = 0) {
 			out << value_;
 		}
+		inline void writeCondensed(std::vector<uint8_t>& buffer,
+				std::unordered_map<std::string, ObjectMapEntry>& objectMapping) const override {
+			auto writeBinary = [&buffer] (uint8_t lead, auto number) {
+				buffer.push_back(lead);
+				for (int i = 0; i < sizeof(number) * 8; i += 8)
+					buffer.push_back((number >> i) & 0xffull);
+			};
+			if (value_ <= 15 && value_ >= -16) {
+				buffer.push_back((static_cast<int8_t>(value_) & (CondensedInfo::MINIMAL_INTEGER_MASK)) | CondensedInfo::MINIMAL_INTEGER);
+			} else if (value_ <= 2047 && value_ >= -2048) {
+				buffer.push_back(CondensedInfo::VERY_SHORT_INTEGER | ((value_ & 0x0f00) >> 8));
+				buffer.push_back(value_ & 0xff);
+			} else if (value_ < std::numeric_limits<int16_t>::max() && value_ > std::numeric_limits<int16_t>::min())
+				writeBinary(CondensedInfo::SIGNED_SHORT_INTEGER, static_cast<int16_t>(value_));
+			else if (value_ < std::numeric_limits<uint16_t>::max() && value_ > std::numeric_limits<uint16_t>::min())
+				writeBinary(CondensedInfo::UNSIGNED_SHORT_INTEGER, static_cast<uint16_t>(value_));
+			else if (value_ < std::numeric_limits<int32_t>::max() && value_ > std::numeric_limits<int32_t>::min())
+				writeBinary(CondensedInfo::SIGNED_INTEGER, static_cast<int32_t>(value_));
+			else if (value_ < std::numeric_limits<uint32_t>::max() && value_ > std::numeric_limits<uint32_t>::min())
+				writeBinary(CondensedInfo::UNSIGNED_INTEGER, static_cast<uint32_t>(value_));
+			else if (value_ < std::numeric_limits<int64_t>::max() && value_ > std::numeric_limits<int64_t>::min())
+				writeBinary(CondensedInfo::SIGNED_LONG_INTEGER, static_cast<int64_t>(value_));
+			else if (value_ < std::numeric_limits<uint64_t>::max() && value_ > std::numeric_limits<uint64_t>::min())
+				writeBinary(CondensedInfo::UNSIGNED_LONG_INTEGER, static_cast<uint64_t>(value_));
+		}
+	protected:		
+		void addToObjectList(std::unordered_map<std::string, int>& list) const override { }
 	};
 private:
-	struct JSONdoubleOrInt : public JSON {
-		int64_t valueInt_;
+	
+	struct JSONdoubleOrInt : public JSONint {
 		double valueDouble_;
-		JSONdoubleOrInt(int64_t from = 0) : valueInt_(from), valueDouble_(double(from)) {}
+		JSONdoubleOrInt(int64_t from = 0) : JSONint(from), valueDouble_(double(from)) {}
 
-		inline virtual JSONtype type() {
-			return JSONtype::INTEGER;
-		}
-		inline virtual int64_t& getInt() {
-			return valueInt_;
-		}
-		inline virtual double& getDouble() {
+		inline double& getDouble() override {
 			return valueDouble_;
-		}
-		inline void write(std::ostream& out, int = 0) {
-			out << valueInt_;
 		}
 	};
 public:
@@ -160,9 +352,18 @@ public:
 		inline virtual bool& getBool() {
 			return value_;
 		}
-		inline void write(std::ostream& out, int = 0) {
+		inline void write(std::ostream& out, int = 0) override {
 			out << (value_ ? "true" : "false");
 		}
+		inline void writeCondensed(std::vector<uint8_t>& buffer,
+				std::unordered_map<std::string, ObjectMapEntry>& objectMapping) const override {
+			if (value_)
+				buffer.push_back(CondensedInfo::TRUE);
+			else
+				buffer.push_back(CondensedInfo::FALSE);
+		}
+	protected:		
+		virtual void addToObjectList(std::unordered_map<std::string, int>& list) { }
 	};
 	struct JSONobject : public JSON {
 		std::unordered_map<std::string, std::shared_ptr<JSON>> contents_;
@@ -174,7 +375,7 @@ public:
 		inline virtual std::unordered_map<std::string, std::shared_ptr<JSON>>& getObject() {
 			return contents_;
 		}
-		inline void write(std::ostream& out, int depth = 0) {
+		inline void write(std::ostream& out, int depth = 0) override {
 			if (contents_.empty()) {
 				out.put('{');
 				out.put('}');
@@ -200,6 +401,116 @@ public:
 			indent(out, depth);
 			out.put('}');
 		}
+		inline void writeCondensed(std::vector<uint8_t>& buffer,
+				std::unordered_map<std::string, ObjectMapEntry>& objectMapping) const override {
+			if (contents_.empty()) {
+				buffer.push_back(CondensedInfo::SMALL_UNIQUE_OBJECT); // Does not need to be saved
+				return;
+			}
+			std::pair<std::string, bool> descriptor = getDescriptor();
+			if (descriptor.second) {
+				auto mapping = objectMapping.find(descriptor.first);
+				if (mapping != objectMapping.end()) {
+					int index = mapping->second.index;
+					if (index <= CondensedInfo::MAX_COMMON_OBJECT_ID)
+						buffer.push_back(CondensedInfo::COMMON_OBJECT | index);
+					else if (index <= CondensedInfo::MAX_UNCOMMON_OBJECT_ID) {
+						index -= CondensedInfo::MAX_COMMON_OBJECT_ID + 1;
+						buffer.push_back(CondensedInfo::UNCOMMON_OBJECT);
+						buffer.push_back(index);
+					} else {
+						index -= CondensedInfo::MAX_UNCOMMON_OBJECT_ID + 1;
+						buffer.push_back(CondensedInfo::UNCOMMON_OBJECT);
+						buffer.push_back(index >> 8);
+						buffer.push_back(index & 0xff);
+					}
+					if (!mapping->second.used) {
+						if (!descriptor.first.empty()) {
+							for (auto c : descriptor.first)
+								buffer.push_back(c);
+							buffer.push_back(CondensedInfo::TERMINATOR);
+							mapping->second.used = true;
+						}
+					}
+				} else {
+					if (contents_.size() < CondensedInfo::MAX_SMALL_UNIQUE_OBJECT_SIZE) {
+						buffer.push_back(CondensedInfo::SMALL_UNIQUE_OBJECT | contents_.size());
+						for (auto c : descriptor.first)
+							buffer.push_back(c);
+					} else {
+						buffer.push_back(CondensedInfo::LARGE_UNIQUE_OBJECT);
+						for (auto c : descriptor.first)
+							buffer.push_back(c);
+						buffer.push_back(CondensedInfo::TERMINATOR);
+					}
+				}
+
+				auto ordered = getOrdered();
+				for (auto& it : ordered) {
+					it.second->writeCondensed(buffer, objectMapping);
+				}
+			} else {
+				buffer.push_back(CondensedInfo::HASHTABLE);
+				for (auto& it : contents_)
+					if (!it.first.empty()) {
+						for (auto c : it.first)
+							buffer.push_back(c);
+						buffer.push_back(CondensedInfo::TERMINATOR);
+				}
+				if (contents_.find("") != contents_.end()) // Empty string must go last
+					buffer.push_back(CondensedInfo::TERMINATOR);
+				buffer.push_back(CondensedInfo::TERMINATOR);
+				for (auto& it : contents_)
+					if (!it.first.empty()) {
+						it.second->writeCondensed(buffer, objectMapping);
+					}
+				auto empty = contents_.find("");
+				if (empty != contents_.end())
+					empty->second->writeCondensed(buffer, objectMapping);
+			}
+		}
+	private:
+		void addToObjectList(std::unordered_map<std::string, int>& list) const override {
+			if (contents_.empty())
+				return;
+			std::pair<std::string, bool> descriptor = getDescriptor();
+			if (descriptor.second)
+				list[descriptor.first]++;
+
+			for (auto& it : contents_)
+				JSON::addToObjectList(it.second, list);
+		}
+	protected:	
+		std::vector<std::pair<std::string, std::shared_ptr<JSON>>> getOrdered() const {
+			// They must be sorted in order to notice identical objects
+			std::vector<std::pair<std::string, std::shared_ptr<JSON>>> ordered;
+			for (auto& it : contents_)
+				ordered.push_back(it);
+			std::sort(ordered.begin(), ordered.end(), [] (auto first, auto second) {
+				return first.first < second.first;
+			});
+			return ordered;
+		}
+		std::pair<std::string, bool> getDescriptor() const {
+			std::string composed;
+			auto ordered = getOrdered();
+			for (auto& it : ordered) {
+				if (it.first.empty()) {
+					composed.push_back(CondensedInfo::STRING_FINAL_BIT_FLIP);
+				}
+				for (unsigned int i = 0; i < it.first.size(); i++) {
+					if (it.first[i] > 0) {
+						if (i < it.first.size() - 1)
+							composed.push_back(it.first[i]);
+						else
+							composed.push_back(uint8_t(it.first[i]) | CondensedInfo::STRING_FINAL_BIT_FLIP);
+					} else {
+						return { "", false };
+					}
+				}
+			}
+			return { composed, true };
+		}
 	};
 	struct JSONarray : public JSON {
 		std::vector<std::shared_ptr<JSON>> contents_;
@@ -211,22 +522,41 @@ public:
 		inline virtual std::vector<std::shared_ptr<JSON>>& getVector() {
 			return contents_;
 		}
-		inline void write(std::ostream& out, int depth = 0) {
+		inline void write(std::ostream& out, int depth = 0) override {
 			out.put('[');
 			if (contents_.empty()) {
 				out.put(']');
 				return;
 			}
-			for (auto& it : contents_) {
+			for (unsigned int i = 0; i < contents_.size(); i++) {
 				out.put('\n');
-				indent(out, depth);
-				indent(out, depth);
-				it->write(out, depth + 1);
+				indent(out, depth + 1);
+				contents_[i]->write(out, depth + 1);
+				if (i < contents_.size() - 1) out.put(',');
 			}
 			out.put('\n');
 			indent(out, depth);
 			out.put(']');
 			
+		}
+		inline void writeCondensed(std::vector<uint8_t>& buffer,
+				std::unordered_map<std::string, ObjectMapEntry>& objectMapping) const override {
+			if (contents_.size() < CondensedInfo::MAX_SHORT_ARRAY_SIZE) {
+				buffer.push_back(CondensedInfo::SHORT_ARRAY | contents_.size());
+				for (auto& it : contents_)
+					it->writeCondensed(buffer, objectMapping);
+			} else {
+				buffer.push_back(CondensedInfo::LONG_ARRAY);
+				for (auto& it : contents_)
+					it->writeCondensed(buffer, objectMapping);
+				buffer.push_back(CondensedInfo::TERMINATOR);
+			}
+		}
+	protected:		
+		void addToObjectList(std::unordered_map<std::string, int>& list) const override {
+			for (auto& it : contents_) {
+				JSON::addToObjectList(it, list);
+			}
 		}
 	};
 
@@ -275,7 +605,7 @@ public:
 			if (in.get() == 'u' && in.get() == 'l' && in.get() == 'l')
 				return std::make_shared<JSON>();
 			else
-				throw(std::runtime_error("JSON parser found misspelled bool 'null'"));
+				throw(std::runtime_error("JSON parser found misspelled keyword 'null'"));
 		}
 		else if (letter == '-' || (letter >= '0' && letter <= '9')) {
 			std::string asString;
@@ -283,10 +613,10 @@ public:
 			bool hasDecimal = false;
 			do {
 				letter = in.get();
-				if (!hasDecimal && letter == '.')
+				if (!hasDecimal && (letter == '.' || letter == 'e' || letter == 'E'))
 					hasDecimal = true;
 				asString.push_back(letter);
-			} while (letter == '-' || letter == 'E' || letter == 'e' || letter == ',' || letter == '.' || (letter >= '0' && letter <= '9'));
+			} while (letter == '-' || letter == '+' || letter == 'E' || letter == 'e' || letter == ',' || letter == '.' || (letter >= '0' && letter <= '9'));
 			in.unget();
 			std::stringstream parsing(asString);
 			if (hasDecimal) {
@@ -315,16 +645,15 @@ public:
 		}
 		else if (letter == '[') {
 			auto retval = std::make_shared<JSONarray>();
-			do {
+			letter = readWhitespace();
+			while (letter != ']') {
+				in.unget();
+				retval->getVector().push_back(parseJSON(in));
 				letter = readWhitespace();
-				if (letter == '{') {
-					in.unget();
-					retval->getVector().push_back(parseJSON(in));
-				} else break;
-			} while (letter != ']');
+			}
 			return retval;
 		} else {
-			throw(std::runtime_error("JSON parser found unexpected character " + letter));
+			throw std::runtime_error(std::string("JSON parser found unexpected character ") + letter);
 		}
 		return std::make_shared<JSON>();
 	}
@@ -333,6 +662,206 @@ public:
 		if (!in.good()) return std::make_shared<JSON>();
 		return parseJSON(in);
 	}
+
+private:
+	static std::shared_ptr<JSON> parseCondensed(uint8_t const*& source, const uint8_t* end, std::vector<std::unique_ptr<std::vector<std::string>>>& objects) {
+		// Recursion invariant: source always points to 1 byte before the start of the object
+		auto next = [&] () {
+			source++;
+			if (source >= end)
+				throw std::runtime_error("Condensed JSON got to an unexpected end of data");
+		};
+		auto peek = [&] () {
+			if (source + 1 >= end)
+				throw std::runtime_error("Condensed JSON got to an unexpected end of data");
+			return *(source + 1);
+		};
+		auto parseInt = [&] (auto typeIdentificator) {
+			decltype(typeIdentificator) made = 0;
+			for (int i = 0; i < sizeof(typeIdentificator) * 8; i += 8) {
+				next();
+				made |= uint64_t(*source) << i;
+			}
+			return made;
+		};
+		auto readCodeString = [&] () {
+			next();
+			if (*source == CondensedInfo::STRING_FINAL_BIT_FLIP)
+				return std::string("");
+
+			std::string made;
+			while (true) {
+				if (*source < CondensedInfo::STRING_FINAL_BIT_FLIP) {
+					made.push_back(*source);
+					next();
+				} else {
+					made.push_back(*source & 0x7f);
+					return made;
+				}
+			}
+		};
+		auto parseObjectUsingDict = [&] (const std::vector<std::string>& names) {
+			auto made = std::make_shared<JSONobject>();
+			for (const std::string& it : names) {
+				made->contents_[it] = parseCondensed(source, end, objects);
+			}
+			return made;
+		};
+		auto parseObject = [&] (const int index) {
+			if (objects.size() < index + 1)
+				objects.resize(index + 1);
+			if (!objects[index]) {
+				objects[index] = std::make_unique<std::vector<std::string>>();
+				while (peek() != CondensedInfo::TERMINATOR)
+					objects[index]->push_back(readCodeString());
+				next();
+			}
+			return parseObjectUsingDict(*objects[index]);
+		};
+
+		next();
+		if (*source & CondensedInfo::HALF_PRECISION_FLOAT) {
+			unsigned long int result = (*source & 0x40ull) << 57; // Sign
+			result |= (0x3e0 + (*source & 0x3full)) << 52; // Exponent
+			next();
+			result |= uint64_t(*source) << 44; // Mantissa
+			return std::make_shared<JSONdouble>(*reinterpret_cast<double*>(&result), JSONdouble::Hint::HALF_PRECISION);
+		} else if (*source == CondensedInfo::LONG_STRING) {
+			auto made = std::make_shared<JSONstring>();
+			next();
+			while (*source) {
+				made->contents_.push_back(*source);
+				next();
+			};
+			return made;
+		} else if (*source == CondensedInfo::RESERVED_1) {
+			throw(std::runtime_error("Condensed JSON version is too low"));
+		} else if ((*source & 0b11100000) == CondensedInfo::SHORT_STRING) {
+			auto made = std::make_shared<JSONstring>();
+			int length = *source & CondensedInfo::SHORT_STRING_MASK;
+			for (int i = 0; i < length; i++) {
+				next();
+				made->contents_.push_back(*source);
+			}
+			return made;
+		} else if ((*source & 0b11100000) == CondensedInfo::MINIMAL_INTEGER) {
+			auto made = std::make_shared<JSONint>();
+			made->value_ = (*source & CondensedInfo::MINIMAL_INTEGER_NUMBER_MASK);
+			if (*source & CondensedInfo::MINIMAL_INTEGER_SIGN_MASK)
+				made->value_ |= 0xfffffffffffffff0;
+			return made;
+		} else if (*source == CondensedInfo::RESERVED_2) {
+			throw(std::runtime_error("Condensed JSON version is too low"));
+		} else if (*source == CondensedInfo::UNCOMMON_OBJECT) {
+			next();
+			int index = *source + CondensedInfo::MAX_COMMON_OBJECT_ID;
+			return parseObject(index);
+		} else if (*source == CondensedInfo::RARE_OBJECT) {
+			next();
+			int index = *source << 8;
+			next();
+			index += *source + CondensedInfo::MAX_UNCOMMON_OBJECT_ID;
+			return parseObject(index);
+		} else if ((*source & CondensedInfo::COMMON_OBJECT) == CondensedInfo::COMMON_OBJECT) {
+			int index = *source & CondensedInfo::OBJECT_MASK;
+			return parseObject(index);
+		} else if (*source == CondensedInfo::LARGE_UNIQUE_OBJECT) {
+			std::vector<std::string> names;
+			while (peek() != CondensedInfo::TERMINATOR) {
+				names.push_back(readCodeString());
+			}
+			next();
+			return parseObjectUsingDict(names);
+		} else if (*source == CondensedInfo::HASHTABLE) {
+			std::vector<std::string> names;
+			next();
+			while (*source != CondensedInfo::TERMINATOR) {
+				std::string made;
+				while (*source != CondensedInfo::TERMINATOR) {
+					made.push_back(*source);
+					next();
+				}
+				next();
+				names.push_back(made);
+			}
+			if (peek() == CondensedInfo::TERMINATOR) {
+				names.push_back("");
+				next();
+			}
+			return parseObjectUsingDict(names);
+		} else if ((*source & 0xf0) == CondensedInfo::SMALL_UNIQUE_OBJECT) {
+			int size = *source & CondensedInfo::OBJECT_MASK;
+			std::vector<std::string> names;
+			for (int i = 0; i < size; i++)
+				names.push_back(readCodeString());
+			return parseObjectUsingDict(names);
+		} else if (*source == CondensedInfo::LONG_ARRAY) {
+			auto made = std::make_shared<JSONarray>();
+			while (peek() != CondensedInfo::TERMINATOR)
+				made->contents_.push_back(parseCondensed(source, end, objects));
+			made->contents_.shrink_to_fit();
+			return made;
+		} else if ((*source & 0xf0) == CondensedInfo::SHORT_ARRAY) {
+			auto made = std::make_shared<JSONarray>();
+			int size = *source & CondensedInfo::SHORT_ARRAY_MASK;
+			made->contents_.reserve(size);
+			for (int i = 0; i < size; i++)
+				made->contents_.push_back(parseCondensed(source, end, objects));
+			made->contents_.shrink_to_fit();
+			return made;
+		} else if ((*source & 0xf0) == CondensedInfo::VERY_SHORT_INTEGER) {
+			auto made = std::make_shared<JSONint>();
+			made->value_ = (*source & CondensedInfo::VERY_SHORT_INTEGER_PREFIX_MASK) << 8;
+			if (*source & CondensedInfo::VERY_SHORT_INTEGER_SIGN_MASK)
+				made->value_ |= 0xfffffffffffff800;
+			next();
+			made->value_ |= *source;
+			return made;
+		} else if (*source == CondensedInfo::DOUBLE) {
+			uint64_t buffer = 0;
+			for (int i = 0; i < sizeof(double) * 8; i += 8) {
+				next();
+				buffer |= uint64_t(*source) << i;
+			}
+			return std::make_shared<JSONdouble>(*reinterpret_cast<double*>(&buffer), JSONdouble::Hint::DOUBLE_PRECISION);
+		} else if (*source == CondensedInfo::FLOAT) {
+			uint32_t buffer = 0;
+			for (int i = 0; i < sizeof(float) * 8; i += 8) {
+				next();
+				buffer |= uint32_t(*source) << i;
+			}
+			return std::make_shared<JSONdouble>(*reinterpret_cast<float*>(&buffer), JSONdouble::Hint::SINGLE_PRECISION);
+		} else if (*source == CondensedInfo::SIGNED_LONG_INTEGER) {
+			return std::make_shared<JSONint>(parseInt(int64_t()));
+		} else if (*source == CondensedInfo::UNSIGNED_LONG_INTEGER) {
+			return std::make_shared<JSONint>(parseInt(uint64_t()));
+		} else if (*source == CondensedInfo::SIGNED_INTEGER) {
+			return std::make_shared<JSONint>(parseInt(int32_t()));
+		} else if (*source == CondensedInfo::UNSIGNED_INTEGER) {
+			return std::make_shared<JSONint>(parseInt(uint32_t()));
+		} else if (*source == CondensedInfo::SIGNED_SHORT_INTEGER) {
+			return std::make_shared<JSONint>(parseInt(int16_t()));
+		} else if (*source == CondensedInfo::UNSIGNED_SHORT_INTEGER) {
+			return std::make_shared<JSONint>(parseInt(uint16_t()));
+		} else if (*source == CondensedInfo::TRUE) {
+			return std::make_shared<JSONbool>(true);
+		} else if (*source == CondensedInfo::FALSE) {
+			return std::make_shared<JSONbool>(false);
+		} else if (*source == CondensedInfo::NIL) {
+			return std::make_shared<JSON>();
+		} else if (*source == CondensedInfo::NIL) {
+			throw(std::runtime_error("Condensed JSON stumbled upon an unexpected ending symbol"));
+		}
+		throw(std::runtime_error("Condensed JSON failed to recognise type information: " + std::to_string(*source) + " after " + std::to_string(*(source - 1))));
+	}
+
+public:
+	static std::shared_ptr<JSON> parseCondensed(const std::vector<uint8_t>& source) {
+		const uint8_t* data = source.data() - 1;
+		std::vector<std::unique_ptr<std::vector<std::string>>> objects;
+		return parseCondensed(data, source.data() + source.size(), objects);
+	}
+
 
 private:
 	mutable std::shared_ptr<JSON> preferencesJson_;
@@ -622,6 +1151,23 @@ public:
 		preferencesJson_ = nullptr;
 		return out.str();
 	}
+
+	/*!
+	* \brief Serialises the object to condensed JSON
+	* \return A vector of uint8_t with the contents
+	*
+	* \note It calls the overloaded process() method
+	* \note Not only that it's not thread-safe, it's not even reentrant
+	*/
+	inline std::vector<uint8_t> serialiseCondensed() const {
+		std::shared_ptr<JSON> target = std::make_shared<JSONobject>();
+		preferencesJson_ = target;
+		preferencesSaving_ = true;
+		const_cast<Serialisable*>(this)->serialisation();
+		std::vector<uint8_t> out = preferencesJson_->condensed();
+		preferencesJson_ = nullptr;
+		return out;
+	}
 	
 	/*!
 	* \brief Saves the object to a JSON file
@@ -649,6 +1195,26 @@ public:
 	inline void deserialise(const std::string& source) {
 		std::stringstream sourceStream(source);
 		std::shared_ptr<JSON> target = parseJSON(sourceStream);
+		preferencesJson_ = target;
+		if (preferencesJson_->type() == JSONtype::NIL) {
+			preferencesJson_ = nullptr;
+			return;
+		}
+		preferencesSaving_ = false;
+		serialisation();
+		preferencesJson_ = nullptr;
+	}
+
+	/*!
+	* \brief Loads the object from condensed JSON
+	* \return A vector of uint8_t with the contents
+	*
+	* \note It calls the overloaded process() method
+	* \note If the string is blank, nothing is done
+	* \note Not only that it's not thread-safe, it's not even reentrant
+	*/
+	inline void deserialise(const std::vector<uint8_t>& source) {
+		std::shared_ptr<JSON> target = parseCondensed(source);
 		preferencesJson_ = target;
 		if (preferencesJson_->type() == JSONtype::NIL) {
 			preferencesJson_ = nullptr;
