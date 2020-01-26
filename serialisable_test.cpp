@@ -30,6 +30,7 @@ struct Preferences : public Serialisable {
 	std::vector<Chapter> chapters;
 	std::vector<std::shared_ptr<Chapter>> footnotes;
 	std::vector<std::unique_ptr<Chapter>> addenda;
+	std::shared_ptr<Serialisable::JSON> customValue;
 #if __cplusplus > 201402L
 	std::optional<std::string> critique;
 #endif
@@ -46,6 +47,7 @@ struct Preferences : public Serialisable {
 		synch("chapters", chapters);
 		synch("footnotes", footnotes);
 		synch("addenda", addenda);
+		synch("custom_value", customValue);
 #if __cplusplus > 201402L
 		synch("critique", critique);
 #endif

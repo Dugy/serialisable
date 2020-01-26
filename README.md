@@ -9,7 +9,7 @@ It contains a small JSON library to avoid a dependency on a library that is prob
 
 Have your classes inherit from the Serialisable class. They have to implement a `serialisation()` method that calls overloads of the `synch()` method that accepts name of the value in the file as first argument and the value (taken as reference) as the second one. If something needs to be processed before saving or after loading, the `saving()` method will return a bool value telling if it's being saved.
 
-Supported types are `std::string`, arithmetic types (converted to `double` because of JSON's specifications), `bool`, any object derived from `Serialisable`, a `std::vector` of such objects or a `std::vector` of smart pointers to such objects (raw pointers will not be deleted if `load()` is called while the vector is not empty).
+Supported types are `std::string`, arithmetic types (converted to `double` because of JSON's specifications), `bool`, any object derived from `Serialisable`, a `std::vector` of serialisable types, a `std::string` indexed `std::unordered_map` of serialisable types, smart pointers to serialisable types (`null` in JSON stands for `nullptr`). If C++17 is available, `std::optinal` is also supported.
 
 Default values should be set somewhere, because if `load()` does not find the specified file, it does not call the `serialisation()` method.
 

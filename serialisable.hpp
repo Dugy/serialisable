@@ -1055,8 +1055,8 @@ struct Serialiser<Serialised, std::enable_if_t<std::is_integral<Serialised>::val
 	}
 	/*!
 	* \brief Loads an arithmetic integer value
+	* \param Reference to the result value
 	* \param The JSON
-	* \return The value
 	* \throw If the type is wrong
 	*/
 	static void deserialise(Serialised& result, std::shared_ptr<Serialisable::JSON> value) {
@@ -1089,8 +1089,8 @@ struct Serialiser<Serialised, std::enable_if_t<std::is_floating_point<Serialised
 	}
 	/*!
 	* \brief Loads an arithmetic floating point value
+	* \param Reference to the result value
 	* \param The JSON
-	* \return The value
 	* \throw If the type is wrong
 	*/
 	static void deserialise(Serialised& result, std::shared_ptr<Serialisable::JSON> value) {
@@ -1111,8 +1111,8 @@ struct Serialiser<std::string, void> {
 	}
 	/*!
 	* \brief Loads a string value
+	* \param Reference to the result value
 	* \param The JSON
-	* \return The value
 	* \throw If the type is wrong
 	*/
 	static void deserialise(std::string& result, std::shared_ptr<Serialisable::JSON> value) {
@@ -1157,8 +1157,8 @@ struct Serialiser<bool, void> {
 	}
 	/*!
 	* \brief Loads a boolean value
+	* \param Reference to the result value
 	* \param The JSON
-	* \return The value
 	* \throw If the type is wrong
 	*/
 	static void deserialise(bool& result, std::shared_ptr<Serialisable::JSON> value) {
@@ -1181,8 +1181,8 @@ struct Serialiser<Serialised, std::enable_if_t<std::is_base_of<Serialisable, Ser
 	}
 	/*!
 	* \brief Loads JSON into an object of a class derived from Serialisable
+	* \param Reference to the result value
 	* \param The JSON
-	* \return The object
 	* \throw If the something's wrong with the JSON
 	*/
 	static void deserialise(Serialised& result, std::shared_ptr<Serialisable::JSON> value) {
@@ -1207,8 +1207,8 @@ struct Serialiser<std::vector<T>, void> {
 	}
 	/*!
 	* \brief Loads a vector of serialisable values
+	* \param Reference to the result value
 	* \param The JSON
-	* \return The value
 	* \throw If the type is wrong
 	*/
 	static void deserialise(std::vector<T>& result, std::shared_ptr<Serialisable::JSON> value) {
@@ -1236,8 +1236,8 @@ struct Serialiser<std::unordered_map<std::string, T>, void> {
 	}
 	/*!
 	* \brief Loads a hashtable of serialisable values
+	* \param Reference to the result value
 	* \param The JSON
-	* \return The value
 	* \throw If the type is wrong
 	*/
 	static void deserialise(std::unordered_map<std::string, T>& result, std::shared_ptr<Serialisable::JSON> value) {
@@ -1270,8 +1270,8 @@ struct Serialiser<std::shared_ptr<T>, void> {
 	}
 	/*!
 	* \brief Loads a shared pointer to a serialisable value
+	* \param Reference to the result value
 	* \param The JSON
-	* \return The value
 	* \throw If the type is wrong
 	*/
 	static void deserialise(std::shared_ptr<T>& result, std::shared_ptr<Serialisable::JSON> value) {
@@ -1301,8 +1301,8 @@ struct Serialiser<std::unique_ptr<T>, void> {
 	}
 	/*!
 	* \brief Loads a unique pointer to a serialisable value
+	* \param Reference to the result value
 	* \param The JSON
-	* \return The value
 	* \throw If the type is wrong
 	*/
 	static void deserialise(std::unique_ptr<T>& result, std::shared_ptr<Serialisable::JSON> value) {
@@ -1312,6 +1312,36 @@ struct Serialiser<std::unique_ptr<T>, void> {
 			Serialiser<T, void>::deserialise(*result, value);
 		} else
 			result = std::unique_ptr<T>(); // nullptr
+	}
+};
+
+template <>
+struct Serialiser<std::shared_ptr<Serialisable::JSON>, void> {
+	constexpr static bool valid = true;
+	/*!
+	* \brief Dummy for using custom JSON as member
+	* \param The value
+	* \return The constructed JSON
+	* \note JSON null is nullptr
+	*/
+	static std::shared_ptr<Serialisable::JSON> serialise(std::shared_ptr<Serialisable::JSON> value) {
+		if (value)
+			return value;
+		else
+			return std::make_shared<Serialisable::JSON>(); // null
+	}
+	/*!
+	* \brief Dummy for using custom JSON as member
+	* \param Reference to the result value
+	* \param The JSON
+	* \throw If the type is wrong
+	* \note JSON null is nullptr
+	*/
+	static void deserialise(std::shared_ptr<Serialisable::JSON>& result, std::shared_ptr<Serialisable::JSON> value) {
+		if (value->type() != Serialisable::JSONtype::NIL)
+			result = value;
+		else
+			result = nullptr;
 	}
 };
 
@@ -1333,8 +1363,8 @@ struct Serialiser<std::optional<T>, void> {
 	}
 	/*!
 	* \brief Loads an optional serialisable value
+	* \param Reference to the result value
 	* \param The JSON
-	* \return The value
 	* \throw If the type is wrong
 	*/
 	static void deserialise(std::optional<T>& result, std::shared_ptr<Serialisable::JSON> value) {
