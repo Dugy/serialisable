@@ -45,7 +45,6 @@ class SerialisableBrief : public Serialisable {
 	int addElementToOffset(uint64_t ellisionOffset) {
 		auto check = [ellisionOffset] (int signedOffset) {
 			uint64_t offset = uint64_t(signedOffset);
-			std::cout << "Offsets " << offset << " " << ellisionOffset << std::endl;
 			if (ellisionOffset - offset < 0xffff && ellisionOffset > offset)
 				throw(std::logic_error("Offset misprediction detected, very probably a call to skip() was forgotten"));
 			return signedOffset;

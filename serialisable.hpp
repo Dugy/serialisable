@@ -188,28 +188,28 @@ public:
 		}
 	};
 	struct JSONstring : public JSON {
-		std::string contents_;
-		JSONstring(const std::string& from = "") : contents_(from) {}
+		std::string _contents;
+		JSONstring(const std::string& from = "") : _contents(from) {}
 
 		inline virtual JSONtype type() {
 			return JSONtype::STRING;
 		}
 		inline virtual std::string& getString() {
-			return contents_;
+			return _contents;
 		}
 		inline void write(std::ostream& out, int = 0) override {
-			writeString(out, contents_);
+			writeString(out, _contents);
 		}
 		inline void writeCondensed(std::vector<uint8_t>& buffer,
 				std::unordered_map<std::string, ObjectMapEntry>& objectMapping) const override {
-			if (contents_.size() < CondensedInfo::MAX_SHORT_STRING_SIZE) {
-				buffer.push_back(CondensedInfo::SHORT_STRING + contents_.size());
-				for (auto c : contents_) {
+			if (_contents.size() < CondensedInfo::MAX_SHORT_STRING_SIZE) {
+				buffer.push_back(CondensedInfo::SHORT_STRING + _contents.size());
+				for (auto c : _contents) {
 					buffer.push_back(static_cast<uint8_t>(c));
 				}
 			} else {
 				buffer.push_back(CondensedInfo::LONG_STRING);
-				for (auto c : contents_) {
+				for (auto c : _contents) {
 					buffer.push_back(static_cast<uint8_t>(c));
 				}
 				buffer.push_back(CondensedInfo::TERMINATOR);
@@ -219,7 +219,7 @@ public:
 		void addToObjectList(std::unordered_map<std::string, int>& list) const override { }
 	};
 	struct JSONdouble : public JSON {
-		double value_;
+		double _value;
 		enum class Hint : uint8_t {
 			ABSENT,
 			HALF_PRECISION,
@@ -229,25 +229,25 @@ public:
 		mutable Hint _hint;
 
 
-		JSONdouble(double from = 0, Hint hint = Hint::ABSENT) : value_(from), _hint(hint) {}
+		JSONdouble(double from = 0, Hint hint = Hint::ABSENT) : _value(from), _hint(hint) {}
 
 		inline virtual JSONtype type() {
 			return JSONtype::DOUBLE;
 		}
 		inline virtual double& getDouble() {
-			return value_;
+			return _value;
 		}
 		inline void write(std::ostream& out, int = 0) override {
 			std::stringstream stream;
-			stream << value_;
+			stream << _value;
 			std::string made = stream.str();
 			out << made;
 			if (made.find('.') == std::string::npos && made.find('e') == std::string::npos && made.find('e') == std::string::npos)
 				out << ".0";
 		}
 		void updateCondensedSizeHint() const {
-			uint64_t triedBinary = *reinterpret_cast<const uint64_t*>(&value_);
-			double tried = fabs(value_);
+			uint64_t triedBinary = *reinterpret_cast<const uint64_t*>(&_value);
+			double tried = fabs(_value);
 			_hint = Hint::DOUBLE_PRECISION;
 			if (tried > std::numeric_limits<float>::max() || (tried < std::numeric_limits<float>::min() && tried > 0))
 				return; // Leave double, number is outside range
@@ -268,21 +268,21 @@ public:
 				std::unordered_map<std::string, ObjectMapEntry>& objectMapping) const override {
 			if (_hint == Hint::ABSENT) updateCondensedSizeHint();
 			if (_hint == Hint::HALF_PRECISION) {
-				uint64_t source = *reinterpret_cast<const uint64_t*>(&value_);
+				uint64_t source = *reinterpret_cast<const uint64_t*>(&_value);
 				uint8_t result = 0x80 | ((source & 0x8000000000000000) >> 57); // Identification prefix and sign (1 + 1 bits)
 				result |= ((source & 0x7ff0000000000000) >> 52) - 0x3e0; // Exponent (6 bits)
 				buffer.push_back(result);
 				buffer.push_back((source & 0x000fffffffffffff) >> 44); // Mantissa (1 byte)
 			} else if (_hint == Hint::SINGLE_PRECISION) {
 				buffer.push_back(CondensedInfo::FLOAT);
-				float asFloat = float(value_);
+				float asFloat = float(_value);
 				uint32_t extractor = *reinterpret_cast<const uint32_t*>(&asFloat);
 				for (int i = 0; i < sizeof(float) * 8; i += 8) {
 					buffer.push_back((extractor & (0xff << i)) >> i);
 				}
 			} else if (_hint == Hint::DOUBLE_PRECISION) {
 				buffer.push_back(CondensedInfo::DOUBLE);
-				uint64_t extractor = *reinterpret_cast<const uint64_t*>(&value_);
+				uint64_t extractor = *reinterpret_cast<const uint64_t*>(&_value);
 				for (int i = 0; i < sizeof(double) * 8; i += 8)
 					buffer.push_back((extractor & (0xffull << i)) >> i);
 			}
@@ -291,17 +291,17 @@ public:
 		void addToObjectList(std::unordered_map<std::string, int>& list) const override { }
 	};
 	struct JSONint : public JSON {
-		int64_t value_;
-		JSONint(int64_t from = 0) : value_(from) {}
+		int64_t _value;
+		JSONint(int64_t from = 0) : _value(from) {}
 
 		inline virtual JSONtype type() {
 			return JSONtype::INTEGER;
 		}
 		inline virtual int64_t& getInt() {
-			return value_;
+			return _value;
 		}
 		inline void write(std::ostream& out, int = 0) {
-			out << value_;
+			out << _value;
 		}
 		inline void writeCondensed(std::vector<uint8_t>& buffer,
 				std::unordered_map<std::string, ObjectMapEntry>& objectMapping) const override {
@@ -310,23 +310,23 @@ public:
 				for (int i = 0; i < sizeof(number) * 8; i += 8)
 					buffer.push_back((number >> i) & 0xffull);
 			};
-			if (value_ <= 15 && value_ >= -16) {
-				buffer.push_back((static_cast<int8_t>(value_) & (CondensedInfo::MINIMAL_INTEGER_MASK)) | CondensedInfo::MINIMAL_INTEGER);
-			} else if (value_ <= 2047 && value_ >= -2048) {
-				buffer.push_back(CondensedInfo::VERY_SHORT_INTEGER | ((value_ & 0x0f00) >> 8));
-				buffer.push_back(value_ & 0xff);
-			} else if (value_ < std::numeric_limits<int16_t>::max() && value_ > std::numeric_limits<int16_t>::min())
-				writeBinary(CondensedInfo::SIGNED_SHORT_INTEGER, static_cast<int16_t>(value_));
-			else if (value_ < std::numeric_limits<uint16_t>::max() && value_ > std::numeric_limits<uint16_t>::min())
-				writeBinary(CondensedInfo::UNSIGNED_SHORT_INTEGER, static_cast<uint16_t>(value_));
-			else if (value_ < std::numeric_limits<int32_t>::max() && value_ > std::numeric_limits<int32_t>::min())
-				writeBinary(CondensedInfo::SIGNED_INTEGER, static_cast<int32_t>(value_));
-			else if (value_ < std::numeric_limits<uint32_t>::max() && value_ > std::numeric_limits<uint32_t>::min())
-				writeBinary(CondensedInfo::UNSIGNED_INTEGER, static_cast<uint32_t>(value_));
-			else if (value_ < std::numeric_limits<int64_t>::max() && value_ > std::numeric_limits<int64_t>::min())
-				writeBinary(CondensedInfo::SIGNED_LONG_INTEGER, static_cast<int64_t>(value_));
-			else if (value_ < std::numeric_limits<uint64_t>::max() && value_ > std::numeric_limits<uint64_t>::min())
-				writeBinary(CondensedInfo::UNSIGNED_LONG_INTEGER, static_cast<uint64_t>(value_));
+			if (_value <= 15 && _value >= -16) {
+				buffer.push_back((static_cast<int8_t>(_value) & (CondensedInfo::MINIMAL_INTEGER_MASK)) | CondensedInfo::MINIMAL_INTEGER);
+			} else if (_value <= 2047 && _value >= -2048) {
+				buffer.push_back(CondensedInfo::VERY_SHORT_INTEGER | ((_value & 0x0f00) >> 8));
+				buffer.push_back(_value & 0xff);
+			} else if (_value < std::numeric_limits<int16_t>::max() && _value > std::numeric_limits<int16_t>::min())
+				writeBinary(CondensedInfo::SIGNED_SHORT_INTEGER, static_cast<int16_t>(_value));
+			else if (_value < std::numeric_limits<uint16_t>::max() && _value > std::numeric_limits<uint16_t>::min())
+				writeBinary(CondensedInfo::UNSIGNED_SHORT_INTEGER, static_cast<uint16_t>(_value));
+			else if (_value < std::numeric_limits<int32_t>::max() && _value > std::numeric_limits<int32_t>::min())
+				writeBinary(CondensedInfo::SIGNED_INTEGER, static_cast<int32_t>(_value));
+			else if (_value < std::numeric_limits<uint32_t>::max() && _value > std::numeric_limits<uint32_t>::min())
+				writeBinary(CondensedInfo::UNSIGNED_INTEGER, static_cast<uint32_t>(_value));
+			else if (_value < std::numeric_limits<int64_t>::max() && _value > std::numeric_limits<int64_t>::min())
+				writeBinary(CondensedInfo::SIGNED_LONG_INTEGER, static_cast<int64_t>(_value));
+			else if (_value < std::numeric_limits<uint64_t>::max() && _value > std::numeric_limits<uint64_t>::min())
+				writeBinary(CondensedInfo::UNSIGNED_LONG_INTEGER, static_cast<uint64_t>(_value));
 		}
 	protected:		
 		void addToObjectList(std::unordered_map<std::string, int>& list) const override { }
@@ -343,21 +343,21 @@ private:
 	};
 public:
 	struct JSONbool : public JSON {
-		bool value_;
-		JSONbool(bool from = false) : value_(from) {}
+		bool _value;
+		JSONbool(bool from = false) : _value(from) {}
 
 		inline virtual JSONtype type() {
 			return JSONtype::BOOL;
 		}
 		inline virtual bool& getBool() {
-			return value_;
+			return _value;
 		}
 		inline void write(std::ostream& out, int = 0) override {
-			out << (value_ ? "true" : "false");
+			out << (_value ? "true" : "false");
 		}
 		inline void writeCondensed(std::vector<uint8_t>& buffer,
 				std::unordered_map<std::string, ObjectMapEntry>& objectMapping) const override {
-			if (value_)
+			if (_value)
 				buffer.push_back(CondensedInfo::TRUE);
 			else
 				buffer.push_back(CondensedInfo::FALSE);
@@ -366,17 +366,17 @@ public:
 		virtual void addToObjectList(std::unordered_map<std::string, int>& list) { }
 	};
 	struct JSONobject : public JSON {
-		std::unordered_map<std::string, std::shared_ptr<JSON>> contents_;
+		std::unordered_map<std::string, std::shared_ptr<JSON>> _contents;
 		JSONobject() {}
 
 		inline virtual JSONtype type() {
 			return JSONtype::OBJECT;
 		}
 		inline virtual std::unordered_map<std::string, std::shared_ptr<JSON>>& getObject() {
-			return contents_;
+			return _contents;
 		}
 		inline void write(std::ostream& out, int depth = 0) override {
-			if (contents_.empty()) {
+			if (_contents.empty()) {
 				out.put('{');
 				out.put('}');
 				return;
@@ -384,7 +384,7 @@ public:
 			out.put('{');
 			out.put('\n');
 			bool first = true;
-			for (auto& it : contents_) {
+			for (auto& it : _contents) {
 				if (first)
 					first = false;
 				else {
@@ -403,7 +403,7 @@ public:
 		}
 		inline void writeCondensed(std::vector<uint8_t>& buffer,
 				std::unordered_map<std::string, ObjectMapEntry>& objectMapping) const override {
-			if (contents_.empty()) {
+			if (_contents.empty()) {
 				buffer.push_back(CondensedInfo::SMALL_UNIQUE_OBJECT); // Does not need to be saved
 				return;
 			}
@@ -433,8 +433,8 @@ public:
 						}
 					}
 				} else {
-					if (contents_.size() < CondensedInfo::MAX_SMALL_UNIQUE_OBJECT_SIZE) {
-						buffer.push_back(CondensedInfo::SMALL_UNIQUE_OBJECT | contents_.size());
+					if (_contents.size() < CondensedInfo::MAX_SMALL_UNIQUE_OBJECT_SIZE) {
+						buffer.push_back(CondensedInfo::SMALL_UNIQUE_OBJECT | _contents.size());
 						for (auto c : descriptor.first)
 							buffer.push_back(c);
 					} else {
@@ -451,40 +451,40 @@ public:
 				}
 			} else {
 				buffer.push_back(CondensedInfo::HASHTABLE);
-				for (auto& it : contents_)
+				for (auto& it : _contents)
 					if (!it.first.empty()) {
 						for (auto c : it.first)
 							buffer.push_back(c);
 						buffer.push_back(CondensedInfo::TERMINATOR);
 				}
-				if (contents_.find("") != contents_.end()) // Empty string must go last
+				if (_contents.find("") != _contents.end()) // Empty string must go last
 					buffer.push_back(CondensedInfo::TERMINATOR);
 				buffer.push_back(CondensedInfo::TERMINATOR);
-				for (auto& it : contents_)
+				for (auto& it : _contents)
 					if (!it.first.empty()) {
 						it.second->writeCondensed(buffer, objectMapping);
 					}
-				auto empty = contents_.find("");
-				if (empty != contents_.end())
+				auto empty = _contents.find("");
+				if (empty != _contents.end())
 					empty->second->writeCondensed(buffer, objectMapping);
 			}
 		}
 	private:
 		void addToObjectList(std::unordered_map<std::string, int>& list) const override {
-			if (contents_.empty())
+			if (_contents.empty())
 				return;
 			std::pair<std::string, bool> descriptor = getDescriptor();
 			if (descriptor.second)
 				list[descriptor.first]++;
 
-			for (auto& it : contents_)
+			for (auto& it : _contents)
 				JSON::addToObjectList(it.second, list);
 		}
 	protected:	
 		std::vector<std::pair<std::string, std::shared_ptr<JSON>>> getOrdered() const {
 			// They must be sorted in order to notice identical objects
 			std::vector<std::pair<std::string, std::shared_ptr<JSON>>> ordered;
-			for (auto& it : contents_)
+			for (auto& it : _contents)
 				ordered.push_back(it);
 			std::sort(ordered.begin(), ordered.end(), [] (auto first, auto second) {
 				return first.first < second.first;
@@ -513,26 +513,26 @@ public:
 		}
 	};
 	struct JSONarray : public JSON {
-		std::vector<std::shared_ptr<JSON>> contents_;
+		std::vector<std::shared_ptr<JSON>> _contents;
 		JSONarray() {}
 
 		inline virtual JSONtype type() {
 			return JSONtype::ARRAY;
 		}
 		inline virtual std::vector<std::shared_ptr<JSON>>& getVector() {
-			return contents_;
+			return _contents;
 		}
 		inline void write(std::ostream& out, int depth = 0) override {
 			out.put('[');
-			if (contents_.empty()) {
+			if (_contents.empty()) {
 				out.put(']');
 				return;
 			}
-			for (unsigned int i = 0; i < contents_.size(); i++) {
+			for (unsigned int i = 0; i < _contents.size(); i++) {
 				out.put('\n');
 				indent(out, depth + 1);
-				contents_[i]->write(out, depth + 1);
-				if (i < contents_.size() - 1) out.put(',');
+				_contents[i]->write(out, depth + 1);
+				if (i < _contents.size() - 1) out.put(',');
 			}
 			out.put('\n');
 			indent(out, depth);
@@ -541,20 +541,20 @@ public:
 		}
 		inline void writeCondensed(std::vector<uint8_t>& buffer,
 				std::unordered_map<std::string, ObjectMapEntry>& objectMapping) const override {
-			if (contents_.size() < CondensedInfo::MAX_SHORT_ARRAY_SIZE) {
-				buffer.push_back(CondensedInfo::SHORT_ARRAY | contents_.size());
-				for (auto& it : contents_)
+			if (_contents.size() < CondensedInfo::MAX_SHORT_ARRAY_SIZE) {
+				buffer.push_back(CondensedInfo::SHORT_ARRAY | _contents.size());
+				for (auto& it : _contents)
 					it->writeCondensed(buffer, objectMapping);
 			} else {
 				buffer.push_back(CondensedInfo::LONG_ARRAY);
-				for (auto& it : contents_)
+				for (auto& it : _contents)
 					it->writeCondensed(buffer, objectMapping);
 				buffer.push_back(CondensedInfo::TERMINATOR);
 			}
 		}
 	protected:		
 		void addToObjectList(std::unordered_map<std::string, int>& list) const override {
-			for (auto& it : contents_) {
+			for (auto& it : _contents) {
 				JSON::addToObjectList(it, list);
 			}
 		}
@@ -703,7 +703,7 @@ private:
 		auto parseObjectUsingDict = [&] (const std::vector<std::string>& names) {
 			auto made = std::make_shared<JSONobject>();
 			for (const std::string& it : names) {
-				made->contents_[it] = parseCondensed(source, end, objects);
+				made->_contents[it] = parseCondensed(source, end, objects);
 			}
 			return made;
 		};
@@ -730,7 +730,7 @@ private:
 			auto made = std::make_shared<JSONstring>();
 			next();
 			while (*source) {
-				made->contents_.push_back(*source);
+				made->_contents.push_back(*source);
 				next();
 			};
 			return made;
@@ -741,14 +741,14 @@ private:
 			int length = *source & CondensedInfo::SHORT_STRING_MASK;
 			for (int i = 0; i < length; i++) {
 				next();
-				made->contents_.push_back(*source);
+				made->_contents.push_back(*source);
 			}
 			return made;
 		} else if ((*source & 0b11100000) == CondensedInfo::MINIMAL_INTEGER) {
 			auto made = std::make_shared<JSONint>();
-			made->value_ = (*source & CondensedInfo::MINIMAL_INTEGER_NUMBER_MASK);
+			made->_value = (*source & CondensedInfo::MINIMAL_INTEGER_NUMBER_MASK);
 			if (*source & CondensedInfo::MINIMAL_INTEGER_SIGN_MASK)
-				made->value_ |= 0xfffffffffffffff0;
+				made->_value |= 0xfffffffffffffff0;
 			return made;
 		} else if (*source == CondensedInfo::RESERVED_2) {
 			throw(std::runtime_error("Condensed JSON version is too low"));
@@ -798,24 +798,24 @@ private:
 		} else if (*source == CondensedInfo::LONG_ARRAY) {
 			auto made = std::make_shared<JSONarray>();
 			while (peek() != CondensedInfo::TERMINATOR)
-				made->contents_.push_back(parseCondensed(source, end, objects));
-			made->contents_.shrink_to_fit();
+				made->_contents.push_back(parseCondensed(source, end, objects));
+			made->_contents.shrink_to_fit();
 			return made;
 		} else if ((*source & 0xf0) == CondensedInfo::SHORT_ARRAY) {
 			auto made = std::make_shared<JSONarray>();
 			int size = *source & CondensedInfo::SHORT_ARRAY_MASK;
-			made->contents_.reserve(size);
+			made->_contents.reserve(size);
 			for (int i = 0; i < size; i++)
-				made->contents_.push_back(parseCondensed(source, end, objects));
-			made->contents_.shrink_to_fit();
+				made->_contents.push_back(parseCondensed(source, end, objects));
+			made->_contents.shrink_to_fit();
 			return made;
 		} else if ((*source & 0xf0) == CondensedInfo::VERY_SHORT_INTEGER) {
 			auto made = std::make_shared<JSONint>();
-			made->value_ = (*source & CondensedInfo::VERY_SHORT_INTEGER_PREFIX_MASK) << 8;
+			made->_value = (*source & CondensedInfo::VERY_SHORT_INTEGER_PREFIX_MASK) << 8;
 			if (*source & CondensedInfo::VERY_SHORT_INTEGER_SIGN_MASK)
-				made->value_ |= 0xfffffffffffff800;
+				made->_value |= 0xfffffffffffff800;
 			next();
-			made->value_ |= *source;
+			made->_value |= *source;
 			return made;
 		} else if (*source == CondensedInfo::DOUBLE) {
 			uint64_t buffer = 0;
@@ -864,8 +864,8 @@ public:
 
 
 private:
-	mutable std::shared_ptr<JSON> preferencesJson_;
-	mutable bool preferencesSaving_;
+	mutable std::shared_ptr<JSON> _json;
+	mutable bool _saving;
 
 protected:
 	/*!
@@ -885,7 +885,7 @@ protected:
 	* \note Result is meaningless outside a serialisation() overload
 	*/
 	inline bool saving() {
-		return preferencesSaving_;
+		return _saving;
 	}
 
 	/*!
@@ -895,11 +895,11 @@ protected:
 	* \return false if the value was absent while reading, true otherwise
 	*/
 	inline bool synch(const std::string& key, std::string& value) {
-		if (preferencesSaving_) {
-			preferencesJson_->getObject()[key] = std::make_shared<JSONstring>(value);
+		if (_saving) {
+			_json->getObject()[key] = std::make_shared<JSONstring>(value);
 		} else {
-			auto found = preferencesJson_->getObject().find(key);
-			if (found != preferencesJson_->getObject().end()) {
+			auto found = _json->getObject().find(key);
+			if (found != _json->getObject().end()) {
 				value = found->second->getString();
 			} else return false;
 		}
@@ -917,11 +917,11 @@ protected:
 	template<typename T>
 	typename std::enable_if<std::is_floating_point<T>::value, bool>::type
 	synch(const std::string& key, T& value) {
-		if (preferencesSaving_) {
-			preferencesJson_->getObject()[key] = std::make_shared<JSONdouble>(double(value));
+		if (_saving) {
+			_json->getObject()[key] = std::make_shared<JSONdouble>(double(value));
 		} else {
-			auto found = preferencesJson_->getObject().find(key);
-			if (found != preferencesJson_->getObject().end()) {
+			auto found = _json->getObject().find(key);
+			if (found != _json->getObject().end()) {
 				value = T(found->second->getDouble());
 			} return false;
 		}
@@ -937,12 +937,12 @@ protected:
 	template<typename T>
 	typename std::enable_if<std::is_integral<T>::value, bool>::type
 		synch(const std::string& key, T& value) {
-		if (preferencesSaving_) {
-			preferencesJson_->getObject()[key] = std::make_shared<JSONint>(int64_t(value));
+		if (_saving) {
+			_json->getObject()[key] = std::make_shared<JSONint>(int64_t(value));
 		}
 		else {
-			auto found = preferencesJson_->getObject().find(key);
-			if (found != preferencesJson_->getObject().end()) {
+			auto found = _json->getObject().find(key);
+			if (found != _json->getObject().end()) {
 				value = T(found->second->getInt());
 			} return false;
 		}
@@ -958,12 +958,12 @@ protected:
 	template<typename T>
 	typename std::enable_if<std::is_enum<T>::value, bool>::type
 		synch(const std::string& key, T& value) {
-		if (preferencesSaving_) {
-			preferencesJson_->getObject()[key] = std::make_shared<JSONint>(std::underlying_type_t<T>(value));
+		if (_saving) {
+			_json->getObject()[key] = std::make_shared<JSONint>(std::underlying_type_t<T>(value));
 		}
 		else {
-			auto found = preferencesJson_->getObject().find(key);
-			if (found != preferencesJson_->getObject().end()) {
+			auto found = _json->getObject().find(key);
+			if (found != _json->getObject().end()) {
 				value = T(found->second->getInt());
 			} return false;
 		}
@@ -977,11 +977,11 @@ protected:
 	* \return false if the value was absent while reading, true otherwise
 	*/
 	inline bool synch(const std::string& key, bool& value) {
-		if (preferencesSaving_) {
-			preferencesJson_->getObject()[key] = std::make_shared<JSONbool>(value);
+		if (_saving) {
+			_json->getObject()[key] = std::make_shared<JSONbool>(value);
 		} else {
-			auto found = preferencesJson_->getObject().find(key);
-			if (found != preferencesJson_->getObject().end()) {
+			auto found = _json->getObject().find(key);
+			if (found != _json->getObject().end()) {
 				value = found->second->getBool();
 			} else return false;
 		}
@@ -1003,15 +1003,15 @@ protected:
 			&& std::is_constructible<T, typename std::remove_reference<decltype(*std::declval<T>())>::type*>::value
 			&& std::is_arithmetic<typename std::remove_reference<decltype(!std::declval<T>())>::type>::value , bool>::type
 	synch(const std::string& key, T& value) {
-		if (preferencesSaving_) {
+		if (_saving) {
 			if (!value)
-				preferencesJson_->getObject()[key] = std::make_shared<JSON>();
+				_json->getObject()[key] = std::make_shared<JSON>();
 			else {
 				synch(key, *value);
 			}
 		} else {
-			auto found = preferencesJson_->getObject().find(key);
-			if (found != preferencesJson_->getObject().end()) {
+			auto found = _json->getObject().find(key);
+			if (found != _json->getObject().end()) {
 				if (found->second->type() != JSONtype::NIL) {
 					value = std::move(T(new typename std::remove_reference<decltype(*std::declval<T>())>::type()));
 					synch(key, *value);
@@ -1034,19 +1034,19 @@ protected:
 	template<typename T>
 	typename std::enable_if<std::is_base_of<Serialisable, T>::value, bool>::type
 	synch(const std::string& key, T& value) {
-		value.preferencesSaving_ = preferencesSaving_;
-		if (preferencesSaving_) {
+		value._saving = _saving;
+		if (_saving) {
 			auto making = std::make_shared<JSONobject>();
-			value.preferencesJson_ = making;
+			value._json = making;
 			value.serialisation();
-			preferencesJson_->getObject()[key] = making;
-			value.preferencesJson_.reset();
+			_json->getObject()[key] = making;
+			value._json.reset();
 		} else {
-			auto found = preferencesJson_->getObject().find(key);
-			if (found != preferencesJson_->getObject().end()) {
-				value.preferencesJson_ = found->second;
+			auto found = _json->getObject().find(key);
+			if (found != _json->getObject().end()) {
+				value._json = found->second;
 				value.serialisation();
-				value.preferencesJson_.reset();
+				value._json.reset();
 			} else return false;
 		}
 		return true;
@@ -1063,28 +1063,28 @@ protected:
 	template<typename T>
 	typename std::enable_if<std::is_base_of<Serialisable, T>::value, bool>::type
 	synch(const std::string& key, std::vector<T>& value) {
-		if (preferencesSaving_) {
+		if (_saving) {
 			auto making = std::make_shared<JSONarray>();
 			for (unsigned int i = 0; i < value.size(); i++) {
 				auto innerMaking = std::make_shared<JSONobject>();
-				value[i].preferencesSaving_ = true;
-				value[i].preferencesJson_ = innerMaking;
+				value[i]._saving = true;
+				value[i]._json = innerMaking;
 				value[i].serialisation();
-				value[i].preferencesJson_.reset();
+				value[i]._json.reset();
 				making->getVector().push_back(innerMaking);
 			}
-			preferencesJson_->getObject()[key] = making;
+			_json->getObject()[key] = making;
 		} else {
 			value.clear();
-			auto found = preferencesJson_->getObject().find(key);
-			if (found != preferencesJson_->getObject().end()) {
+			auto found = _json->getObject().find(key);
+			if (found != _json->getObject().end()) {
 				for (unsigned int i = 0; i < found->second->getVector().size(); i++) {
 					value.push_back(T());
 					T& filled = value.back();
-					filled.preferencesSaving_ = false;
-					filled.preferencesJson_ = found->second->getVector()[i];
+					filled._saving = false;
+					filled._json = found->second->getVector()[i];
 					filled.serialisation();
-					filled.preferencesJson_.reset();
+					filled._json.reset();
 				}
 			} else return false;
 		}
@@ -1105,28 +1105,28 @@ protected:
 	typename std::enable_if<std::is_base_of<Serialisable, typename std::remove_reference<decltype(*std::declval<T>())>::type>::value
 			&& std::is_constructible<T, typename std::remove_reference<decltype(*std::declval<T>())>::type*>::value, bool>::type
 	synch(const std::string& key, std::vector<T>& value) {
-		if (preferencesSaving_) {
+		if (_saving) {
 			auto making = std::make_shared<JSONarray>();
 			for (unsigned int i = 0; i < value.size(); i++) {
 				auto innerMaking = std::make_shared<JSONobject>();
-				(*value[i]).preferencesSaving_ = true;
-				(*value[i]).preferencesJson_ = innerMaking;
+				(*value[i])._saving = true;
+				(*value[i])._json = innerMaking;
 				(*value[i]).serialisation();
-				(*value[i]).preferencesJson_.reset();
+				(*value[i])._json.reset();
 				making->getVector().push_back(innerMaking);
 			}
-			preferencesJson_->getObject()[key] = making;
+			_json->getObject()[key] = making;
 		} else {
 			value.clear();
-			auto found = preferencesJson_->getObject().find(key);
-			if (found != preferencesJson_->getObject().end()) {
+			auto found = _json->getObject().find(key);
+			if (found != _json->getObject().end()) {
 				for (unsigned int i = 0; i < found->second->getVector().size(); i++) {
 					value.emplace_back(new typename std::remove_reference<decltype(*std::declval<T>())>::type());
 					T& filled = value.back();
-					(*filled).preferencesSaving_ = false;
-					(*filled).preferencesJson_ = found->second->getVector()[i];
+					(*filled)._saving = false;
+					(*filled)._json = found->second->getVector()[i];
 					(*filled).serialisation();
-					(*filled).preferencesJson_.reset();
+					(*filled)._json.reset();
 				}
 			} else return false;
 		}
@@ -1143,12 +1143,12 @@ public:
 	*/
 	inline std::string serialise() const {
 		std::shared_ptr<JSON> target = std::make_shared<JSONobject>();
-		preferencesJson_ = target;
-		preferencesSaving_ = true;
+		_json = target;
+		_saving = true;
 		const_cast<Serialisable*>(this)->serialisation();
 		std::stringstream out;
-		preferencesJson_->write(out);
-		preferencesJson_ = nullptr;
+		_json->write(out);
+		_json = nullptr;
 		return out.str();
 	}
 
@@ -1161,11 +1161,11 @@ public:
 	*/
 	inline std::vector<uint8_t> serialiseCondensed() const {
 		std::shared_ptr<JSON> target = std::make_shared<JSONobject>();
-		preferencesJson_ = target;
-		preferencesSaving_ = true;
+		_json = target;
+		_saving = true;
 		const_cast<Serialisable*>(this)->serialisation();
-		std::vector<uint8_t> out = preferencesJson_->condensed();
-		preferencesJson_ = nullptr;
+		std::vector<uint8_t> out = _json->condensed();
+		_json = nullptr;
 		return out;
 	}
 	
@@ -1177,11 +1177,11 @@ public:
 	* \note Not only that it's not thread-safe, it's not even reentrant
 	*/
 	inline void save(const std::string& fileName) const {
-		preferencesJson_ = std::make_shared<JSONobject>();
-		preferencesSaving_ = true;
+		_json = std::make_shared<JSONobject>();
+		_saving = true;
 		const_cast<Serialisable*>(this)->serialisation();
-		preferencesJson_->writeToFile(fileName);
-		preferencesJson_.reset();
+		_json->writeToFile(fileName);
+		_json.reset();
 	}
 
 	/*!
@@ -1195,14 +1195,14 @@ public:
 	inline void deserialise(const std::string& source) {
 		std::stringstream sourceStream(source);
 		std::shared_ptr<JSON> target = parseJSON(sourceStream);
-		preferencesJson_ = target;
-		if (preferencesJson_->type() == JSONtype::NIL) {
-			preferencesJson_ = nullptr;
+		_json = target;
+		if (_json->type() == JSONtype::NIL) {
+			_json = nullptr;
 			return;
 		}
-		preferencesSaving_ = false;
+		_saving = false;
 		serialisation();
-		preferencesJson_ = nullptr;
+		_json = nullptr;
 	}
 
 	/*!
@@ -1215,14 +1215,14 @@ public:
 	*/
 	inline void deserialise(const std::vector<uint8_t>& source) {
 		std::shared_ptr<JSON> target = parseCondensed(source);
-		preferencesJson_ = target;
-		if (preferencesJson_->type() == JSONtype::NIL) {
-			preferencesJson_ = nullptr;
+		_json = target;
+		if (_json->type() == JSONtype::NIL) {
+			_json = nullptr;
 			return;
 		}
-		preferencesSaving_ = false;
+		_saving = false;
 		serialisation();
-		preferencesJson_ = nullptr;
+		_json = nullptr;
 	}
 
 	/*!
@@ -1234,14 +1234,14 @@ public:
 	* \note Not only that it's not thread-safe, it's not even reentrant
 	*/
 	inline void load(const std::string& fileName) {
-		preferencesJson_ = parseJSON(fileName);
-		if (preferencesJson_->type() == JSONtype::NIL) {
-			preferencesJson_.reset();
+		_json = parseJSON(fileName);
+		if (_json->type() == JSONtype::NIL) {
+			_json.reset();
 			return;
 		}
-		preferencesSaving_ = false;
+		_saving = false;
 		serialisation();
-		preferencesJson_.reset();
+		_json.reset();
 	}
 };
 
