@@ -28,6 +28,15 @@
 #include <cmath>
 #include <algorithm>
 
+class Serialisable;
+
+namespace SerialisableInternals {
+template <typename Serialised, typename SFINAE>
+struct Serialiser {
+	constexpr static bool valid = false;
+};
+}
+
 class Serialisable {
 
 	struct CondensedInfo {
@@ -90,6 +99,10 @@ class Serialisable {
 	};
 
 public:
+	struct SerialisationError : std::runtime_error {
+		using std::runtime_error::runtime_error;
+	};
+
 	enum class JSONtype : uint8_t {
 		NIL, // Can't be NULL, it's a macro in C
 		STRING,
@@ -367,7 +380,7 @@ public:
 	};
 	struct JSONobject : public JSON {
 		std::unordered_map<std::string, std::shared_ptr<JSON>> _contents;
-		JSONobject() {}
+		JSONobject(unsigned int size = 0) : _contents(size) {}
 
 		inline virtual JSONtype type() {
 			return JSONtype::OBJECT;
@@ -514,7 +527,7 @@ public:
 	};
 	struct JSONarray : public JSON {
 		std::vector<std::shared_ptr<JSON>> _contents;
-		JSONarray() {}
+		JSONarray(unsigned int size = 0) : _contents(size) { }
 
 		inline virtual JSONtype type() {
 			return JSONtype::ARRAY;
@@ -864,7 +877,7 @@ public:
 
 
 private:
-	mutable std::shared_ptr<JSON> _json;
+	mutable std::shared_ptr<JSONobject> _json;
 	mutable bool _saving;
 
 protected:
@@ -889,245 +902,21 @@ protected:
 	}
 
 	/*!
-	* \brief Saves or loads a string value
+	* \brief Saves or loads a value
 	* \param The name of the value in the output/input file
 	* \param Reference to the value
 	* \return false if the value was absent while reading, true otherwise
 	*/
-	inline bool synch(const std::string& key, std::string& value) {
+	template <typename T>
+	inline bool synch(const std::string& key, T& value) {
+		static_assert(SerialisableInternals::Serialiser<T, void>::valid,
+				"Trying to serialise a non-serialisable type");
 		if (_saving) {
-			_json->getObject()[key] = std::make_shared<JSONstring>(value);
+			_json->getObject()[key] = SerialisableInternals::Serialiser<T, void>::serialise(value);
 		} else {
 			auto found = _json->getObject().find(key);
 			if (found != _json->getObject().end()) {
-				value = found->second->getString();
-			} else return false;
-		}
-		return true;
-	}
-	
-	/*!
-	* \brief Saves or loads an arithmetic value
-	* \param The name of the value in the output/input file
-	* \param Reference to the value
-	* \return false if the value was absent while reading, true otherwise
-	*
-	* \note The value is converted from and to a double for JSON conformity
-	*/
-	template<typename T>
-	typename std::enable_if<std::is_floating_point<T>::value, bool>::type
-	synch(const std::string& key, T& value) {
-		if (_saving) {
-			_json->getObject()[key] = std::make_shared<JSONdouble>(double(value));
-		} else {
-			auto found = _json->getObject().find(key);
-			if (found != _json->getObject().end()) {
-				value = T(found->second->getDouble());
-			} return false;
-		}
-		return true;
-	}
-
-	/*!
-	* \brief Saves or loads an arithmetic integer value
-	* \param The name of the value in the output/input file
-	* \param Reference to the value
-	* \return false if the value was absent while reading, true otherwise
-	*/
-	template<typename T>
-	typename std::enable_if<std::is_integral<T>::value, bool>::type
-		synch(const std::string& key, T& value) {
-		if (_saving) {
-			_json->getObject()[key] = std::make_shared<JSONint>(int64_t(value));
-		}
-		else {
-			auto found = _json->getObject().find(key);
-			if (found != _json->getObject().end()) {
-				value = T(found->second->getInt());
-			} return false;
-		}
-		return true;
-	}
-
-	/*!
-	* \brief Saves or loads an enum as integer
-	* \param The name of the value in the output/input file
-	* \param Reference to the value
-	* \return false if the value was absent while reading, true otherwise
-	*/
-	template<typename T>
-	typename std::enable_if<std::is_enum<T>::value, bool>::type
-		synch(const std::string& key, T& value) {
-		if (_saving) {
-			_json->getObject()[key] = std::make_shared<JSONint>(std::underlying_type_t<T>(value));
-		}
-		else {
-			auto found = _json->getObject().find(key);
-			if (found != _json->getObject().end()) {
-				value = T(found->second->getInt());
-			} return false;
-		}
-		return true;
-	}
-
-	/*!
-	* \brief Saves or loads a bool
-	* \param The name of the value in the output/input file
-	* \param Reference to the value
-	* \return false if the value was absent while reading, true otherwise
-	*/
-	inline bool synch(const std::string& key, bool& value) {
-		if (_saving) {
-			_json->getObject()[key] = std::make_shared<JSONbool>(value);
-		} else {
-			auto found = _json->getObject().find(key);
-			if (found != _json->getObject().end()) {
-				value = found->second->getBool();
-			} else return false;
-		}
-		return true;
-	}
-	
-	/*!
-	* \brief Saves or loads an object derived from Serialisable held in a smart pointer
-	* \param The name of the value in the output/input file
-	* \param Reference to the pointer
-	* \return false if the value was absent while reading, true otherwise
-	*
-	\ \note The smart pointer class must be dereferencable through operator*(), constructible from raw pointer to the class and the ! operation must result in a number
-	* \note If not null, the contents will be overwritten, so raw pointers must be initalised before calling it, but no memory leak will occur
-	*/
-	template<typename T>
-	typename std::enable_if<!std::is_base_of<Serialisable, T>::value
-			&& std::is_same<bool, typename std::remove_reference<decltype(std::declval<Serialisable>().synch(std::declval<std::string>(), *std::declval<T>()))>::type>::value
-			&& std::is_constructible<T, typename std::remove_reference<decltype(*std::declval<T>())>::type*>::value
-			&& std::is_arithmetic<typename std::remove_reference<decltype(!std::declval<T>())>::type>::value , bool>::type
-	synch(const std::string& key, T& value) {
-		if (_saving) {
-			if (!value)
-				_json->getObject()[key] = std::make_shared<JSON>();
-			else {
-				synch(key, *value);
-			}
-		} else {
-			auto found = _json->getObject().find(key);
-			if (found != _json->getObject().end()) {
-				if (found->second->type() != JSONtype::NIL) {
-					value = std::move(T(new typename std::remove_reference<decltype(*std::declval<T>())>::type()));
-					synch(key, *value);
-				} else
-					value = nullptr;
-			} else {
-				value = nullptr;
-				return false;
-			}
-		}
-		return true;
-	}
-	
-	/*!
-	* \brief Saves or loads an object derived from Serialisable
-	* \param The name of the value in the output/input file
-	* \param Reference to the value
-	* \return false if the value was absent while reading, true otherwise
-	*/
-	template<typename T>
-	typename std::enable_if<std::is_base_of<Serialisable, T>::value, bool>::type
-	synch(const std::string& key, T& value) {
-		value._saving = _saving;
-		if (_saving) {
-			auto making = std::make_shared<JSONobject>();
-			value._json = making;
-			value.serialisation();
-			_json->getObject()[key] = making;
-			value._json.reset();
-		} else {
-			auto found = _json->getObject().find(key);
-			if (found != _json->getObject().end()) {
-				value._json = found->second;
-				value.serialisation();
-				value._json.reset();
-			} else return false;
-		}
-		return true;
-	}
-	
-	/*!
-	* \brief Saves or loads a vector of objects derived from Serialisable
-	* \param The name of the value in the output/input file
-	* \param Reference to the vector
-	* \return false if the value was absent while reading, true otherwise
-	*
-	* \note Class must be default constructible
-	*/
-	template<typename T>
-	typename std::enable_if<std::is_base_of<Serialisable, T>::value, bool>::type
-	synch(const std::string& key, std::vector<T>& value) {
-		if (_saving) {
-			auto making = std::make_shared<JSONarray>();
-			for (unsigned int i = 0; i < value.size(); i++) {
-				auto innerMaking = std::make_shared<JSONobject>();
-				value[i]._saving = true;
-				value[i]._json = innerMaking;
-				value[i].serialisation();
-				value[i]._json.reset();
-				making->getVector().push_back(innerMaking);
-			}
-			_json->getObject()[key] = making;
-		} else {
-			value.clear();
-			auto found = _json->getObject().find(key);
-			if (found != _json->getObject().end()) {
-				for (unsigned int i = 0; i < found->second->getVector().size(); i++) {
-					value.push_back(T());
-					T& filled = value.back();
-					filled._saving = false;
-					filled._json = found->second->getVector()[i];
-					filled.serialisation();
-					filled._json.reset();
-				}
-			} else return false;
-		}
-		return true;
-	}
-	
-	/*!
-	* \brief Saves or loads a vector of smart pointers to objects derived from Serialisable
-	* \param The name of the value in the output/input file
-	* \param Reference to the vector
-	* \return false if the value was absent while reading, true otherwise
-	*
-	* \note The smart pointer class must be dereferencable through operator*() and constructible from raw pointer to the class
-	* \note The class must be default constructible
-	* \note Using a vector of raw pointers may cause memory leaks if there is some content before loading
-	*/
-	template<typename T>
-	typename std::enable_if<std::is_base_of<Serialisable, typename std::remove_reference<decltype(*std::declval<T>())>::type>::value
-			&& std::is_constructible<T, typename std::remove_reference<decltype(*std::declval<T>())>::type*>::value, bool>::type
-	synch(const std::string& key, std::vector<T>& value) {
-		if (_saving) {
-			auto making = std::make_shared<JSONarray>();
-			for (unsigned int i = 0; i < value.size(); i++) {
-				auto innerMaking = std::make_shared<JSONobject>();
-				(*value[i])._saving = true;
-				(*value[i])._json = innerMaking;
-				(*value[i]).serialisation();
-				(*value[i])._json.reset();
-				making->getVector().push_back(innerMaking);
-			}
-			_json->getObject()[key] = making;
-		} else {
-			value.clear();
-			auto found = _json->getObject().find(key);
-			if (found != _json->getObject().end()) {
-				for (unsigned int i = 0; i < found->second->getVector().size(); i++) {
-					value.emplace_back(new typename std::remove_reference<decltype(*std::declval<T>())>::type());
-					T& filled = value.back();
-					(*filled)._saving = false;
-					(*filled)._json = found->second->getVector()[i];
-					(*filled).serialisation();
-					(*filled)._json.reset();
-				}
+				SerialisableInternals::Serialiser<T, void>::deserialise(value, found->second);
 			} else return false;
 		}
 		return true;
@@ -1135,20 +924,32 @@ protected:
 
 public:
 	/*!
+	* \brief Serialises the object to JSON
+	* \return The JSON
+	*
+	* \note It calls the overloaded serialisation() method
+	* \note Not only that it's not thread-safe, it's not even reentrant
+	*/
+	inline std::shared_ptr<JSONobject> toJSON() const {
+		_json = std::make_shared<JSONobject>();
+		_saving = true;
+		const_cast<Serialisable*>(this)->serialisation();
+		std::shared_ptr<JSONobject> made;
+		std::swap(made, _json);
+		return made;
+	}
+
+	/*!
 	* \brief Serialises the object to a JSON string
 	* \return The JSON string
 	*
-	* \note It calls the overloaded process() method
+	* \note It calls the overloaded serialisation() method
 	* \note Not only that it's not thread-safe, it's not even reentrant
 	*/
 	inline std::string serialise() const {
-		std::shared_ptr<JSON> target = std::make_shared<JSONobject>();
-		_json = target;
-		_saving = true;
-		const_cast<Serialisable*>(this)->serialisation();
+		std::shared_ptr<JSON> made = toJSON();
 		std::stringstream out;
-		_json->write(out);
-		_json = nullptr;
+		made->write(out);
 		return out.str();
 	}
 
@@ -1156,16 +957,12 @@ public:
 	* \brief Serialises the object to condensed JSON
 	* \return A vector of uint8_t with the contents
 	*
-	* \note It calls the overloaded process() method
+	* \note It calls the overloaded serialisation() method
 	* \note Not only that it's not thread-safe, it's not even reentrant
 	*/
 	inline std::vector<uint8_t> serialiseCondensed() const {
-		std::shared_ptr<JSON> target = std::make_shared<JSONobject>();
-		_json = target;
-		_saving = true;
-		const_cast<Serialisable*>(this)->serialisation();
-		std::vector<uint8_t> out = _json->condensed();
-		_json = nullptr;
+		std::shared_ptr<JSON> made = toJSON();
+		std::vector<uint8_t> out = made->condensed();
 		return out;
 	}
 	
@@ -1177,32 +974,43 @@ public:
 	* \note Not only that it's not thread-safe, it's not even reentrant
 	*/
 	inline void save(const std::string& fileName) const {
-		_json = std::make_shared<JSONobject>();
-		_saving = true;
-		const_cast<Serialisable*>(this)->serialisation();
-		_json->writeToFile(fileName);
-		_json.reset();
+		std::shared_ptr<JSON> made = toJSON();
+		made->writeToFile(fileName);
+	}
+
+	/*!
+	* \brief Loads the object from a JSON object
+	* \param The JSON string
+	*
+	* \note It calls the overloaded serialisation() method
+	* \note If the string is blank, nothing is done
+	* \note Not only that it's not thread-safe, it's not even reentrant
+	*/
+	inline void fromJSON(const std::shared_ptr<JSON>& source) {
+		if (!source || source->type() == JSONtype::NIL) {
+			// Maybe once should this optionally throw an exception?
+			return;
+		}
+		if (source->type() != JSONtype::OBJECT)
+			throw SerialisationError("Deserialising JSON from a wrong type");
+		_json = std::dynamic_pointer_cast<JSONobject>(source);
+		_saving = false;
+		serialisation();
+		_json = nullptr;
 	}
 
 	/*!
 	* \brief Loads the object from a JSON string
 	* \param The JSON string
 	*
-	* \note It calls the overloaded process() method
+	* \note It calls the overloaded serialisation() method
 	* \note If the string is blank, nothing is done
 	* \note Not only that it's not thread-safe, it's not even reentrant
 	*/
 	inline void deserialise(const std::string& source) {
 		std::stringstream sourceStream(source);
 		std::shared_ptr<JSON> target = parseJSON(sourceStream);
-		_json = target;
-		if (_json->type() == JSONtype::NIL) {
-			_json = nullptr;
-			return;
-		}
-		_saving = false;
-		serialisation();
-		_json = nullptr;
+		fromJSON(target);
 	}
 
 	/*!
@@ -1215,14 +1023,7 @@ public:
 	*/
 	inline void deserialise(const std::vector<uint8_t>& source) {
 		std::shared_ptr<JSON> target = parseCondensed(source);
-		_json = target;
-		if (_json->type() == JSONtype::NIL) {
-			_json = nullptr;
-			return;
-		}
-		_saving = false;
-		serialisation();
-		_json = nullptr;
+		fromJSON(target);
 	}
 
 	/*!
@@ -1234,15 +1035,318 @@ public:
 	* \note Not only that it's not thread-safe, it's not even reentrant
 	*/
 	inline void load(const std::string& fileName) {
-		_json = parseJSON(fileName);
-		if (_json->type() == JSONtype::NIL) {
-			_json.reset();
-			return;
-		}
-		_saving = false;
-		serialisation();
-		_json.reset();
+		std::shared_ptr<JSON> target = parseJSON(fileName);
+		fromJSON(target);
 	}
 };
+
+namespace SerialisableInternals {
+
+template <typename Serialised>
+struct Serialiser<Serialised, std::enable_if_t<std::is_integral<Serialised>::value>> {
+	constexpr static bool valid = true;
+	/*!
+	* \brief Saves an arithmetic integer value
+	* \param The value
+	* \return The constructed JSON
+	*/
+	static std::shared_ptr<Serialisable::JSONint> serialise(Serialised value) {
+		return std::make_shared<Serialisable::JSONint>(value);
+	}
+	/*!
+	* \brief Loads an arithmetic integer value
+	* \param The JSON
+	* \return The value
+	* \throw If the type is wrong
+	*/
+	static void deserialise(Serialised& result, std::shared_ptr<Serialisable::JSON> value) {
+		result = value->getInt();
+	}
+};
+
+template <typename T>
+struct FloatingHint {
+	static auto hint() { return Serialisable::JSONdouble::Hint::ABSENT; }
+};
+
+template <>
+struct FloatingHint<double> {
+	static auto hint() { return Serialisable::JSONdouble::Hint::DOUBLE_PRECISION; }
+};
+
+template <typename Serialised>
+struct Serialiser<Serialised, std::enable_if_t<std::is_floating_point<Serialised>::value>> {
+	constexpr static bool valid = true;
+	/*!
+	* \brief Saves an arithmetic floating point value
+	* \param The value
+	* \return The constructed JSON
+	* \note If the type used is double precision, condensed JSON will always be double precision
+	* if the value is single precision, the precision of condensed JSON will be guessed
+	*/
+	static std::shared_ptr<Serialisable::JSONdouble> serialise(Serialised value) {
+		return std::make_shared<Serialisable::JSONdouble>(value, FloatingHint<Serialised>::hint());
+	}
+	/*!
+	* \brief Loads an arithmetic floating point value
+	* \param The JSON
+	* \return The value
+	* \throw If the type is wrong
+	*/
+	static void deserialise(Serialised& result, std::shared_ptr<Serialisable::JSON> value) {
+		result = value->getDouble();
+	}
+};
+
+template <>
+struct Serialiser<std::string, void> {
+	constexpr static bool valid = true;
+	/*!
+	* \brief Saves a string value
+	* \param The value
+	* \return The constructed JSON
+	*/
+	static std::shared_ptr<Serialisable::JSONstring> serialise(const std::string& value) {
+		return std::make_shared<Serialisable::JSONstring>(value);
+	}
+	/*!
+	* \brief Loads a string value
+	* \param The JSON
+	* \return The value
+	* \throw If the type is wrong
+	*/
+	static void deserialise(std::string& result, std::shared_ptr<Serialisable::JSON> value) {
+		result = value->getString();
+	}
+};
+
+template <typename Serialised>
+struct Serialiser<Serialised, std::enable_if_t<std::is_enum<Serialised>::value>> {
+	constexpr static bool valid = true;
+	/*!
+	* \brief Saves an enum as integer
+	* \param The value
+	* \return The constructed JSON
+	* \note If the type used is double precision, condensed JSON will always be double precision
+	* if the value is single precision, the precision of condensed JSON will be guessed
+	*/
+	static std::shared_ptr<Serialisable::JSONint> serialise(Serialised value) {
+		return std::make_shared<Serialisable::JSONint>(std::underlying_type_t<Serialised>(value));
+	}
+	/*!
+	* \brief Loads an integer as enum
+	* \param The JSON
+	* \return The value
+	* \throw If the type is wrong
+	*/
+	static void deserialise(Serialised& result, std::shared_ptr<Serialisable::JSON> value) {
+		result = Serialised(value->getInt());
+	}
+};
+
+template <>
+struct Serialiser<bool, void> {
+	constexpr static bool valid = true;
+	/*!
+	* \brief Saves a boolean value
+	* \param The value
+	* \return The constructed JSON
+	*/
+	static std::shared_ptr<Serialisable::JSONbool> serialise(bool value) {
+		return std::make_shared<Serialisable::JSONbool>(value);
+	}
+	/*!
+	* \brief Loads a boolean value
+	* \param The JSON
+	* \return The value
+	* \throw If the type is wrong
+	*/
+	static void deserialise(bool& result, std::shared_ptr<Serialisable::JSON> value) {
+		result = value->getBool();
+	}
+};
+
+template <typename Serialised>
+struct Serialiser<Serialised, std::enable_if_t<std::is_base_of<Serialisable, Serialised>::value>> {
+	constexpr static bool valid = true;
+	/*!
+	* \brief Saves an object of a class derived from Serialisable as JSON
+	* \param The object
+	* \return The constructed JSON
+	* \note If the type used is double precision, condensed JSON will always be double precision
+	* if the value is single precision, the precision of condensed JSON will be guessed
+	*/
+	static std::shared_ptr<Serialisable::JSONobject> serialise(Serialised value) {
+		return value.toJSON();
+	}
+	/*!
+	* \brief Loads JSON into an object of a class derived from Serialisable
+	* \param The JSON
+	* \return The object
+	* \throw If the something's wrong with the JSON
+	*/
+	static void deserialise(Serialised& result, std::shared_ptr<Serialisable::JSON> value) {
+		result.fromJSON(value);
+	}
+};
+
+template <typename T>
+struct Serialiser<std::vector<T>, void> {
+	constexpr static bool valid = true;
+	static_assert (Serialiser<T, void>::valid, "Serialising a vector of non-serialisable types");
+	/*!
+	* \brief Saves a vector of serialisable values
+	* \param The vector
+	* \return The constructed JSON
+	*/
+	static std::shared_ptr<Serialisable::JSONarray> serialise(const std::vector<T>& value) {
+		auto made = std::make_shared<Serialisable::JSONarray>(value.size());
+		for (unsigned int i = 0; i < value.size(); i++)
+			made->_contents[i] = Serialiser<T, void>::serialise(value[i]);
+		return made;
+	}
+	/*!
+	* \brief Loads a vector of serialisable values
+	* \param The JSON
+	* \return The value
+	* \throw If the type is wrong
+	*/
+	static void deserialise(std::vector<T>& result, std::shared_ptr<Serialisable::JSON> value) {
+		const std::vector<std::shared_ptr<Serialisable::JSON>>& got = value->getVector();
+		result.resize(got.size());
+		for (unsigned int i = 0; i < got.size(); i++)
+			Serialiser<T, void>::deserialise(result[i], got[i]);
+	}
+};
+
+template <typename T>
+struct Serialiser<std::unordered_map<std::string, T>, void> {
+	constexpr static bool valid = true;
+	static_assert (Serialiser<T, void>::valid, "Serialising a hashtable of non-serialisable types");
+	/*!
+	* \brief Saves a hashtable of serialisable values
+	* \param The vector
+	* \return The constructed JSON
+	*/
+	static std::shared_ptr<Serialisable::JSONobject> serialise(const std::unordered_map<std::string, T>& value) {
+		auto made = std::make_shared<Serialisable::JSONobject>(value.size() * 1.5);
+		for (auto& it : value)
+			made->_contents[it.first] = Serialiser<T, void>::serialise(it.second);
+		return made;
+	}
+	/*!
+	* \brief Loads a hashtable of serialisable values
+	* \param The JSON
+	* \return The value
+	* \throw If the type is wrong
+	*/
+	static void deserialise(std::unordered_map<std::string, T>& result, std::shared_ptr<Serialisable::JSON> value) {
+		const std::unordered_map<std::string, std::shared_ptr<Serialisable::JSON>>& got = value->getObject();
+		for (auto it = result.begin(); it != result.end(); ) {
+			if (got.find(it->first) == got.end())
+				it = result.erase(it);
+			else
+				++it;
+		}
+		for (auto& it : got)
+			Serialiser<T, void>::deserialise(result[it.first], it.second);
+	}
+};
+
+template <typename T>
+struct Serialiser<std::shared_ptr<T>, void> {
+	constexpr static bool valid = true;
+	static_assert (Serialiser<T, void>::valid, "Serialising a shared_ptr of a non-serialisable type");
+	/*!
+	* \brief Saves a shared pointer to a serialisable value
+	* \param The vector
+	* \return The constructed JSON
+	*/
+	static std::shared_ptr<Serialisable::JSON> serialise(const std::shared_ptr<T>& value) {
+		if (value)
+			return Serialiser<T, void>::serialise(*value);
+		else
+			return std::make_shared<Serialisable::JSON>(); // null
+	}
+	/*!
+	* \brief Loads a shared pointer to a serialisable value
+	* \param The JSON
+	* \return The value
+	* \throw If the type is wrong
+	*/
+	static void deserialise(std::shared_ptr<T>& result, std::shared_ptr<Serialisable::JSON> value) {
+		if (value && value->type() != Serialisable::JSONtype::NIL) {
+			if (!result)
+				result = std::make_shared<T>();
+			Serialiser<T, void>::deserialise(*result, value);
+		} else
+			result = std::shared_ptr<T>(); // nullptr
+	}
+};
+
+template <typename T>
+struct Serialiser<std::unique_ptr<T>, void> {
+	constexpr static bool valid = true;
+	static_assert (Serialiser<T, void>::valid, "Serialising a unique_ptr of a non-serialisable type");
+	/*!
+	* \brief Saves a unique pointer to a serialisable value
+	* \param The vector
+	* \return The constructed JSON
+	*/
+	static std::shared_ptr<Serialisable::JSON> serialise(const std::unique_ptr<T>& value) {
+		if (value)
+			return Serialiser<T, void>::serialise(*value);
+		else
+			return std::make_shared<Serialisable::JSON>(); // null
+	}
+	/*!
+	* \brief Loads a unique pointer to a serialisable value
+	* \param The JSON
+	* \return The value
+	* \throw If the type is wrong
+	*/
+	static void deserialise(std::unique_ptr<T>& result, std::shared_ptr<Serialisable::JSON> value) {
+		if (value && value->type() != Serialisable::JSONtype::NIL) {
+			if (!result)
+				result = std::make_unique<T>();
+			Serialiser<T, void>::deserialise(*result, value);
+		} else
+			result = std::unique_ptr<T>(); // nullptr
+	}
+};
+
+#if __cplusplus > 201402L
+template <typename T>
+struct Serialiser<std::optional<T>, void> {
+	constexpr static bool valid = true;
+	static_assert (Serialiser<T, void>::valid, "Serialising an optional a non-serialisable type");
+	/*!
+	* \brief Saves an optional serialisable value
+	* \param The vector
+	* \return The constructed JSON
+	*/
+	static std::shared_ptr<Serialisable::JSON> serialise(const std::optional<T>& value) {
+		if (value)
+			return Serialiser<T, void>::serialise(*value);
+		else
+			return std::make_shared<Serialisable::JSON>(); // null
+	}
+	/*!
+	* \brief Loads an optional serialisable value
+	* \param The JSON
+	* \return The value
+	* \throw If the type is wrong
+	*/
+	static void deserialise(std::optional<T>& result, std::shared_ptr<Serialisable::JSON> value) {
+		if (value && value->type() != Serialisable::JSONtype::NIL) {
+			if (!result)
+				result = std::make_optional<T>();
+			Serialiser<T, void>::deserialise(*result, value);
+		} else
+			result = std::nullopt;
+	}
+};
+#endif
+}
 
 #endif //SERIALISABLE_BY_DUGI_HPP

@@ -116,6 +116,44 @@ The structure consists of JSON nodes of various types. They all have the same me
 
 The parser can parse incorrect code in some cases because some of the information in JSON files is redundant.
 
+## Custom types
+
+It is possible to serialise custom types and containers as well. You can do this by specialising `SerialisableInternals::Serialiser` with your type. For example, if you want to serialise also `std::map` indexed with `std::string`, include this file instead of `serialisable.hpp`.
+
+```C++
+#include <map>
+#include "serialisable.hpp"
+
+namespace SerialisableInternals {
+
+template <typename T>
+struct Serialiser<std::map<std::string, T>, void> {
+	constexpr static bool valid = true; // Show that it's not unspecialised
+	static_assert (Serialiser<T, void>::valid, "Serialising a map of non-serialisable types");
+
+	static std::shared_ptr<Serialisable::JSONobject> serialise(const std::map<std::string, T>& value) {
+		auto made = std::make_shared<Serialisable::JSONobject>();
+		for (auto& it : value)
+			made->_contents[it.first] = Serialiser<T, void>::serialise(it.second);
+		return made;
+	}
+
+	static void deserialise(std::map<std::string, T>& result, std::shared_ptr<Serialisable::JSON> value) {
+		const std::map<std::string, std::shared_ptr<Serialisable::JSON>>& got = value->getObject();
+		for (auto it = result.begin(); it != result.end(); ) {
+			if (got.find(it->first) == got.end())
+				it = result.erase(it);
+			else
+				++it;
+		}
+		for (auto& it : got)
+			Serialiser<T, void>::deserialise(result[it.first], it.second);
+	}
+};
+
+}
+```
+
 ## A more condensed format
 
 This is a binary markup language designed to use as little space as possible while keeping the same expressive power than JSON (and is thus directly convertible to JSON, though converting it back might wrongly guess the number of significant digits of floating point numbers without hints). It's also significantly more space efficient than BSON, although it's far from being so fast. Its only purpose is to take as little space as possible while keeping the versatility of JSON. It's not a compression algorithm, so it can be compressed afterwards to further reduce the size.

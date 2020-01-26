@@ -9,10 +9,12 @@ enum DocumentType {
 struct Chapter : public Serialisable {
 	std::string contents = "";
 	std::string author = "Anonymous";
+	std::unordered_map<std::string, std::string> critique;
 
 	virtual void serialisation() {
 		synch("contents", contents);
 		synch("author", author);
+		synch("critique", critique);
 	}
 };
 
@@ -28,7 +30,9 @@ struct Preferences : public Serialisable {
 	std::vector<Chapter> chapters;
 	std::vector<std::shared_ptr<Chapter>> footnotes;
 	std::vector<std::unique_ptr<Chapter>> addenda;
-	std::string* editorsNote = nullptr;
+#if __cplusplus > 201402L
+	std::optional<std::string> critique;
+#endif
 
 	virtual void serialisation() {
 		synch("last_folder", lastFolder);
@@ -42,7 +46,9 @@ struct Preferences : public Serialisable {
 		synch("chapters", chapters);
 		synch("footnotes", footnotes);
 		synch("addenda", addenda);
-		synch("editors_notes", editorsNote);
+#if __cplusplus > 201402L
+		synch("critique", critique);
+#endif
 	}
 };
 
