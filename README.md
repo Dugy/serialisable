@@ -1,7 +1,7 @@
-# Quick Preferences
-A small header-only library for convenient saving of program preferences without boilerplate. It uses the [JSON format](https://en.wikipedia.org/wiki/JSON). It's designed for minising the amount of code used for saving and loading while keeping the saved file human-readable, it's not optimised for performance.
+# Serialisable
+A small header-only library for convenient serialisation of C++ classes without boilerplate. It uses the [JSON format](https://en.wikipedia.org/wiki/JSON). It's designed for minising the amount of code used for saving and loading while keeping the saved file human-readable, it's not optimised for performance.
 
-Normally, persistent preferences tend to have one method for saving that contains code for loading all the content and one method for saving it all. Also, there might be some validity checking. This allows saving it all in one method that calls overloads of one method to all members to be saved.
+Normally, persistent preferences tend to have one method for saving that contains code for loading all the content and one method for saving it all. Also, there might be some need for validity checking. This tool allows saving it all in one method that calls overloads of one method to all members to be saved.
 
 It contains a small JSON library to avoid a dependency on a library that is probably much larger than this one. It's not advised to be used for generic JSON usage.
 
@@ -79,9 +79,9 @@ struct ChapterInfo : public SerialisableBrief {
 };
 ```
 
-**Important:** if a member is *not* to be serialised, it has to be initialised with the `skip()` method (optionally taking constructor arguments; usable also for types that cannot be serialised by `Serialisable`). Otherwise, undefined behaviour is very likely to occur when serialising/deserialising the next member, without any warning. This applies also to any classes that inherit from it unless none of them uses any serialisation. Therefore, this should be used only for classes that hold data and don't have much other functionality. You have been warned.
+**Important:** if a member is *not* to be serialised, it has to be initialised with the `skip()` method (optionally taking constructor arguments; usable also for types that cannot be serialised by `Serialisable`). Otherwise, undefined behaviour is very likely to occur when serialising/deserialising the next member, without any warning. This applies also to any classes that inherit from it unless none of them uses any further serialisation. Therefore, this should be used only for classes that hold data and don't have much other functionality. You have been warned.
 
-The cost of this brevity is proneness to human errors, obscure code and lower performance, especially when constructing the objects. To avoid forgetting the `skip()` method, it's better to use `Serialisable` instead for more complex classes that aren't only for storing data. To avoid unnecessary inefficiency, it's recommended to copy or move the objects instead of creating new ones.
+The cost of this brevity is proneness to human errors, obscure code and lower performance, especially when constructing the objects. To avoid forgetting the `skip()` method, it's better to use `Serialisable` instead for more complex classes that aren't only for storing data. To reduce overhead, it's recommended to copy or move the objects instead of creating new ones (for example by copying a static object from a factory method).
 
 ## JSON library
 
@@ -115,6 +115,8 @@ testReadJson->writeToFile("test-reread.json");
 The structure consists of JSON nodes of various types. They all have the same methods for accessing the contents returning references to the correct types (`getString()`, `getDouble()`, `getBool()`, `getObject()` and `getArray()`), but they are all virtual and only the correct one will not throw an exception. The type can be learned using the `type()` method. The interface class `Serialisable::JSON` is also the _null_ type.
 
 The parser can parse incorrect code in some cases because some of the information in JSON files is redundant.
+
+If necessary, `shared_ptr<JSON>` can also be a serialised member if the `synch` method is used on it.
 
 ## Custom types
 
@@ -156,9 +158,23 @@ struct Serialiser<std::map<std::string, T>, void> {
 
 ## A more condensed format
 
-This is a binary markup language designed to use as little space as possible while keeping the same expressive power than JSON (and is thus directly convertible to JSON, though converting it back might wrongly guess the number of significant digits of floating point numbers without hints). It's also significantly more space efficient than BSON, although it's far from being so fast. Its only purpose is to take as little space as possible while keeping the versatility of JSON. It's not a compression algorithm, so it can be compressed afterwards to further reduce the size.
+This is a binary markup language designed to use as little space as possible while keeping the same expressive power than JSON (and is thus directly convertible to JSON and back). It's also significantly more space efficient than BSON and Packed JSON. However, it's slow to write. Its only purpose is to take as little space as possible while keeping the versatility of JSON. It's not a compression algorithm, so it can be compressed afterwards to further reduce the size if it contains a lot of strings.
 
-In most cases, it uses one byte of markup per value, the rest are long strings, large objects and large arrays that need two bytes. Small integers and boolean values are included in the markup bytes and take no additional space themselves. ASCII-only element names in objects are only as long as the strings themselves.
+It can be accessed using methods `serialiseCondensed()` and `deserialise()`, using data saved in a `std::vector<uint8_t>`:
+
+```C++
+// Assuming 'value' inherits from Serialisable
+std::vector<uint8_t> data = value.serialiseCondensed();
+//...
+std::vector<uint8_t> data = read(source);
+value.deserialise(data);
+```
+
+It might wrongly guess the number of significant digits of floating point numbers without hints. Use `double` types for lossless encoding of numbers and `float` if the precision isn't important.
+
+In most cases, it uses one byte of markup per value, only long strings and some composite objects need two bytes. Small integers and boolean values are included in the markup bytes and take no additional space themselves. ASCII-only element names in objects are only as long as the strings themselves and the element names are stored only once if there are more objects with the same element names.
+
+Encoding:
 
 It has more types than JSON, but they are selected automatically for better space efficiency and translate to the same JSON. The types are marked with binary prefixes, while the prefixes may contain data themselves:
 * **1xxxxxxx** - forms a 15 bit float with the next byte (almost half-precision), 1 bit is sign, 6 are exponent, 8 are mantissa, so the imprecision is about 0.2% and maximal value is in the order of ten power 9 *(total size is 2)*
@@ -177,7 +193,7 @@ It has more types than JSON, but they are selected automatically for better spac
 * **00101110** - reserved
 * **00101111** - large, zero-terminated array of objects *(total size is 2 + total size of contents)*
 * **0001xxxx** - forms a 12 bit signed integer with the following byte *(size is 2)*
-* **00001111** - double *(size is 9)*
+* **00001111** - double (written in little endian, least significant bit goes first) *(size is 9)*
 * **00001110** - float *(size is 5)*
 * **00001101** - signed 64 bit integer *(size is 9)*
 * **00001100** - unsigned 64 bit integer *(size is 9)*
@@ -190,5 +206,3 @@ It has more types than JSON, but they are selected automatically for better spac
 * **00000010** - false *(size is 1)*
 * **00000001** - null *(size is 1)*
 * **00000000** - zero termination, for terminating strings, objects/hashtables and arrays too large to have their sizes in the type byte *(size is counted to types that need it)*
-
-It can be accessed using methods `serialiseCondensed()` and `deserialise()`, using data saved in a `std::vector<uint8_t>`.
