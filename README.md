@@ -9,11 +9,23 @@ It contains a small JSON library to avoid a dependency on a library that is prob
 
 Have your classes inherit from the Serialisable class. They have to implement a `serialisation()` method that calls overloads of the `synch()` method that accepts name of the value in the file as first argument and the value (taken as reference) as the second one. If something needs to be processed before saving or after loading, the `saving()` method will return a bool value telling if it's being saved.
 
-Supported types are `std::string`, arithmetic types (converted to `double` because of JSON's specifications), `bool`, any object derived from `Serialisable`, a `std::vector` of serialisable types, a `std::string` indexed `std::unordered_map` of serialisable types, smart pointers to serialisable types (`null` in JSON stands for `nullptr`). General binary data stored in `std::vector<uint8_t>` are stored in base64 encoding. If C++17 is available, `std::optinal` is also supported. All of these apply recursively, so it's possible to serialise a `std::shared_ptr<std::unordered_map<std::string, std::vector<int>>>`.
+Supported types are:
+* `std::string`
+* floating point types (all stored as `double`)
+* integer types (all stored as `long int`, mostly indistinguishable from `double` in JSON)
+* `bool`
+* any object derived from `Serialisable`
+* a `std::vector` of types that are serialisable themselves
+* an `std::unordered_map` of types that are serialisable themselves, indexed by `std::string`
+* smart pointers to otherwise serialisable types (`null` in JSON stands for `nullptr`)
+* `std::vector<uint8_t>` representing general binary data (stored in string, base64 encoded)
+* `std::optinal` (if C++17 is available)
 
-Default values should be set somewhere, because if `load()` does not find the specified file, it does not call the `serialisation()` method.
+All of these apply recursively, so it's possible to serialise a `std::shared_ptr<std::unordered_map<std::string, std::vector<int>>>`. It is also possible to enable serialisation of other types.
 
-Missing keys will simply not write the value. Values of wrong types will throw.
+Default values should be set somewhere, because if a value is missing or `load()` does not find the specified file, it does not call the `serialisation()` method.
+
+Missing keys will simply not load the values. Values of wrong types will throw.
 
 ```C++
 struct Chapter : public Serialisable {
