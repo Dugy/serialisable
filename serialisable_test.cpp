@@ -31,6 +31,7 @@ struct Preferences : public Serialisable {
 	std::vector<std::shared_ptr<Chapter>> footnotes;
 	std::vector<std::unique_ptr<Chapter>> addenda;
 	std::shared_ptr<Serialisable::JSON> customValue;
+	std::vector<uint8_t> raw;
 #if __cplusplus > 201402L
 	std::optional<std::string> critique;
 #endif
@@ -48,6 +49,7 @@ struct Preferences : public Serialisable {
 		synch("footnotes", footnotes);
 		synch("addenda", addenda);
 		synch("custom_value", customValue);
+		synch("raw", raw);
 #if __cplusplus > 201402L
 		synch("critique", critique);
 #endif
@@ -84,6 +86,7 @@ int main() {
 	prefs.footnotes.back()->contents = "There will be a lot of footnotes";
 	prefs.footnotes.back()->author = "Dugi";
 	prefs.documentType = ESSAY;
+	prefs.raw.push_back(13);
 	prefs.save("prefs.json");
 
 	return 0;

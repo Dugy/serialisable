@@ -149,7 +149,7 @@ public:
 			return result;
 		}
 		inline virtual void writeCondensed(std::vector<uint8_t>& buffer,
-				std::unordered_map<std::string, ObjectMapEntry>& objectMapping) const {
+				std::unordered_map<std::string, ObjectMapEntry>&) const {
 			buffer.push_back(CondensedInfo::NIL);
 		}
 		virtual ~JSON() = default;
@@ -195,7 +195,7 @@ public:
 			}
 			return result;
 		}
-		virtual void addToObjectList(std::unordered_map<std::string, int>& list) const { }
+		virtual void addToObjectList(std::unordered_map<std::string, int>&) const { }
 		static void addToObjectList(std::shared_ptr<JSON> object, std::unordered_map<std::string, int>& list) {
 			object->addToObjectList(list);
 		}
@@ -204,17 +204,17 @@ public:
 		std::string _contents;
 		JSONstring(const std::string& from = "") : _contents(from) {}
 
-		inline virtual JSONtype type() {
+		inline virtual JSONtype type() override {
 			return JSONtype::STRING;
 		}
-		inline virtual std::string& getString() {
+		inline virtual std::string& getString() override {
 			return _contents;
 		}
 		inline void write(std::ostream& out, int = 0) override {
 			writeString(out, _contents);
 		}
 		inline void writeCondensed(std::vector<uint8_t>& buffer,
-				std::unordered_map<std::string, ObjectMapEntry>& objectMapping) const override {
+				std::unordered_map<std::string, ObjectMapEntry>&) const override {
 			if (_contents.size() < CondensedInfo::MAX_SHORT_STRING_SIZE) {
 				buffer.push_back(CondensedInfo::SHORT_STRING + _contents.size());
 				for (auto c : _contents) {
@@ -229,7 +229,7 @@ public:
 			}
 		}
 	protected:
-		void addToObjectList(std::unordered_map<std::string, int>& list) const override { }
+		void addToObjectList(std::unordered_map<std::string, int>&) const override { }
 	};
 	struct JSONdouble : public JSON {
 		double _value;
@@ -244,10 +244,10 @@ public:
 
 		JSONdouble(double from = 0, Hint hint = Hint::ABSENT) : _value(from), _hint(hint) {}
 
-		inline virtual JSONtype type() {
+		inline virtual JSONtype type() override {
 			return JSONtype::DOUBLE;
 		}
-		inline virtual double& getDouble() {
+		inline virtual double& getDouble() override {
 			return _value;
 		}
 		inline void write(std::ostream& out, int = 0) override {
@@ -278,7 +278,7 @@ public:
 			}
 		}
 		inline void writeCondensed(std::vector<uint8_t>& buffer,
-				std::unordered_map<std::string, ObjectMapEntry>& objectMapping) const override {
+				std::unordered_map<std::string, ObjectMapEntry>&) const override {
 			if (_hint == Hint::ABSENT) updateCondensedSizeHint();
 			if (_hint == Hint::HALF_PRECISION) {
 				uint64_t source = *reinterpret_cast<const uint64_t*>(&_value);
@@ -290,37 +290,37 @@ public:
 				buffer.push_back(CondensedInfo::FLOAT);
 				float asFloat = float(_value);
 				uint32_t extractor = *reinterpret_cast<const uint32_t*>(&asFloat);
-				for (int i = 0; i < sizeof(float) * 8; i += 8) {
+				for (int i = 0; i < int(sizeof(float)) * 8; i += 8) {
 					buffer.push_back((extractor & (0xff << i)) >> i);
 				}
 			} else if (_hint == Hint::DOUBLE_PRECISION) {
 				buffer.push_back(CondensedInfo::DOUBLE);
 				uint64_t extractor = *reinterpret_cast<const uint64_t*>(&_value);
-				for (int i = 0; i < sizeof(double) * 8; i += 8)
+				for (int i = 0; i < int(sizeof(double)) * 8; i += 8)
 					buffer.push_back((extractor & (0xffull << i)) >> i);
 			}
 		}
 	protected:
-		void addToObjectList(std::unordered_map<std::string, int>& list) const override { }
+		void addToObjectList(std::unordered_map<std::string, int>&) const override { }
 	};
 	struct JSONint : public JSON {
 		int64_t _value;
 		JSONint(int64_t from = 0) : _value(from) {}
 
-		inline virtual JSONtype type() {
+		inline virtual JSONtype type() override {
 			return JSONtype::INTEGER;
 		}
-		inline virtual int64_t& getInt() {
+		inline virtual int64_t& getInt() override {
 			return _value;
 		}
-		inline void write(std::ostream& out, int = 0) {
+		inline void write(std::ostream& out, int = 0) override {
 			out << _value;
 		}
 		inline void writeCondensed(std::vector<uint8_t>& buffer,
-				std::unordered_map<std::string, ObjectMapEntry>& objectMapping) const override {
+				std::unordered_map<std::string, ObjectMapEntry>&) const override {
 			auto writeBinary = [&buffer] (uint8_t lead, auto number) {
 				buffer.push_back(lead);
-				for (int i = 0; i < sizeof(number) * 8; i += 8)
+				for (int i = 0; i < int(sizeof(number)) * 8; i += 8)
 					buffer.push_back((number >> i) & 0xffull);
 			};
 			if (_value <= 15 && _value >= -16) {
@@ -338,11 +338,12 @@ public:
 				writeBinary(CondensedInfo::UNSIGNED_INTEGER, static_cast<uint32_t>(_value));
 			else if (_value < std::numeric_limits<int64_t>::max() && _value > std::numeric_limits<int64_t>::min())
 				writeBinary(CondensedInfo::SIGNED_LONG_INTEGER, static_cast<int64_t>(_value));
-			else if (_value < std::numeric_limits<uint64_t>::max() && _value > std::numeric_limits<uint64_t>::min())
-				writeBinary(CondensedInfo::UNSIGNED_LONG_INTEGER, static_cast<uint64_t>(_value));
+//			else if (_value < std::numeric_limits<uint64_t>::max() && _value > std::numeric_limits<uint64_t>::min())
+//				writeBinary(CondensedInfo::UNSIGNED_LONG_INTEGER, static_cast<uint64_t>(_value));
+			// Note: The value in int64_t will never need to be stored in uint64_t
 		}
 	protected:		
-		void addToObjectList(std::unordered_map<std::string, int>& list) const override { }
+		void addToObjectList(std::unordered_map<std::string, int>&) const override { }
 	};
 private:
 	
@@ -359,33 +360,33 @@ public:
 		bool _value;
 		JSONbool(bool from = false) : _value(from) {}
 
-		inline virtual JSONtype type() {
+		inline virtual JSONtype type() override {
 			return JSONtype::BOOL;
 		}
-		inline virtual bool& getBool() {
+		inline virtual bool& getBool() override {
 			return _value;
 		}
 		inline void write(std::ostream& out, int = 0) override {
 			out << (_value ? "true" : "false");
 		}
 		inline void writeCondensed(std::vector<uint8_t>& buffer,
-				std::unordered_map<std::string, ObjectMapEntry>& objectMapping) const override {
+				std::unordered_map<std::string, ObjectMapEntry>&) const override {
 			if (_value)
 				buffer.push_back(CondensedInfo::TRUE);
 			else
 				buffer.push_back(CondensedInfo::FALSE);
 		}
 	protected:		
-		virtual void addToObjectList(std::unordered_map<std::string, int>& list) { }
+		virtual void addToObjectList(std::unordered_map<std::string, int>&) { }
 	};
 	struct JSONobject : public JSON {
 		std::unordered_map<std::string, std::shared_ptr<JSON>> _contents;
 		JSONobject(unsigned int size = 0) : _contents(size) {}
 
-		inline virtual JSONtype type() {
+		inline virtual JSONtype type() override {
 			return JSONtype::OBJECT;
 		}
-		inline virtual std::unordered_map<std::string, std::shared_ptr<JSON>>& getObject() {
+		inline virtual std::unordered_map<std::string, std::shared_ptr<JSON>>& getObject() override {
 			return _contents;
 		}
 		inline void write(std::ostream& out, int depth = 0) override {
@@ -529,10 +530,10 @@ public:
 		std::vector<std::shared_ptr<JSON>> _contents;
 		JSONarray(unsigned int size = 0) : _contents(size) { }
 
-		inline virtual JSONtype type() {
+		inline virtual JSONtype type() override {
 			return JSONtype::ARRAY;
 		}
-		inline virtual std::vector<std::shared_ptr<JSON>>& getVector() {
+		inline virtual std::vector<std::shared_ptr<JSON>>& getVector() override {
 			return _contents;
 		}
 		inline void write(std::ostream& out, int depth = 0) override {
@@ -832,14 +833,14 @@ private:
 			return made;
 		} else if (*source == CondensedInfo::DOUBLE) {
 			uint64_t buffer = 0;
-			for (int i = 0; i < sizeof(double) * 8; i += 8) {
+			for (int i = 0; i < int(sizeof(double)) * 8; i += 8) {
 				next();
 				buffer |= uint64_t(*source) << i;
 			}
 			return std::make_shared<JSONdouble>(*reinterpret_cast<double*>(&buffer), JSONdouble::Hint::DOUBLE_PRECISION);
 		} else if (*source == CondensedInfo::FLOAT) {
 			uint32_t buffer = 0;
-			for (int i = 0; i < sizeof(float) * 8; i += 8) {
+			for (int i = 0; i < int(sizeof(float)) * 8; i += 8) {
 				next();
 				buffer |= uint32_t(*source) << i;
 			}
@@ -875,6 +876,70 @@ public:
 		return parseCondensed(data, source.data() + source.size(), objects);
 	}
 
+private:
+
+	static const char* base64chars() {
+		static const char* held = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+		return held;
+	}
+	class InverseBase64
+	{
+	public:
+		static InverseBase64& getInstance()
+		{
+			static InverseBase64 instance;
+			return instance;
+		}
+		const char* get() {
+			return data.data();
+		}
+		InverseBase64(InverseBase64 const&) = delete;
+		void operator=(InverseBase64 const&)  = delete;
+	private:
+		std::array<char, 256> data;
+		InverseBase64() {
+			for (int i = 0; i < 256; i++)
+				data[i] = 0;
+			for (unsigned int i = 0; i < 64; i++) {
+				data[int(base64chars()[i])] = i;
+			}
+		}
+	};
+
+public:
+
+	static std::string toBase64(const std::vector<uint8_t>& from) {
+		const uint8_t* start = from.data();
+		std::string result;
+		for (unsigned int i = 0; i < from.size(); i += 3) {
+			const uint8_t* s = reinterpret_cast<const unsigned char*>(start + i);
+			char piece[5] = "====";
+			piece[0] = base64chars()[s[0] >> 2];
+			piece[1] = base64chars()[((s[0] & 3) << 4) + (s[1] >> 4)];
+			if (&s[1] - start < int(from.size())) {
+				piece[2] = base64chars()[((s[1] & 15) << 2) + (s[2] >> 6)];
+				if (&s[2] - start < int(from.size()))
+					piece[3] = base64chars()[s[2] & 63];
+			}
+			result.append(piece);
+		}
+		return result;
+	}
+
+	static std::vector<uint8_t> fromBase64(const std::string& from) {
+		const char* start = from.c_str();
+		std::vector<uint8_t> result;
+		const char* invb64 = InverseBase64::getInstance().get();
+		for (unsigned int i = 0; i < from.size(); i += 4) {
+			const char* s = start + i;
+			result.push_back((invb64[int(s[0])] << 2) | (invb64[int(s[1])] >> 4));
+			if (s[2] != '=') {
+				result.push_back((invb64[int(s[1])] << 4) | (invb64[int(s[2])] >> 2));
+				if (s[3] != '=') result.push_back((invb64[int(s[2])] << 6) | invb64[int(s[3])]);
+			}
+		}
+		return result;
+	}
 
 private:
 	mutable std::shared_ptr<JSONobject> _json;
@@ -1117,6 +1182,28 @@ struct Serialiser<std::string, void> {
 	*/
 	static void deserialise(std::string& result, std::shared_ptr<Serialisable::JSON> value) {
 		result = value->getString();
+	}
+};
+
+template <>
+struct Serialiser<std::vector<uint8_t>, void> {
+	constexpr static bool valid = true;
+	/*!
+	* \brief Saves a binary value expressed as a vector of uint8_t with base64 encoding to string
+	* \param The value
+	* \return The constructed JSON
+	*/
+	static std::shared_ptr<Serialisable::JSONstring> serialise(const std::vector<uint8_t>& value) {
+		return std::make_shared<Serialisable::JSONstring>(Serialisable::toBase64(value));
+	}
+	/*!
+	* \brief Loads a string value
+	* \param Reference to the result value
+	* \param The JSON
+	* \throw If the type is wrong
+	*/
+	static void deserialise(std::vector<uint8_t>& result, std::shared_ptr<Serialisable::JSON> value) {
+		result = Serialisable::fromBase64(value->getString());
 	}
 };
 
