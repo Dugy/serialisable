@@ -175,7 +175,7 @@ struct ChapterInfo : public SerialisableBrief {
 
 The cost of this brevity is proneness to human errors, obscure code and lower performance, especially when constructing the objects. To avoid forgetting the `skip()` method, it's better to use `Serialisable` instead for more complex classes that aren't only for storing data. To reduce overhead, it's recommended to copy or move the objects instead of creating new ones (for example by copying a static object from a factory method).
 
-### Polymorphic types
+### SerialisablePolymorphic - different classes in one field
 
 If a field can contain various types of objects, it can be dealt with by keeping it in the JSON format and dealing with it later, but `serialisable_polymorphic.hpp` makes it more convenient. It uses [GenericFactory](https://github.com/Dugy/generic_factory), a small, header-only library providing a generic implementation of the self-registering factory pattern. You will have to add it to your project in order to use this tool.
 
@@ -227,7 +227,7 @@ If you don't have C++17, it's not possible to use `inline static` variables, so 
 
 ```C++
 REGISTER_CHILD_INTO_FACTORY(ContentType, Content1, "c1");
-// Must be in the same namespace as the class
+// Must be in the same namespace as the class, but not inside the class
 ```
 
 ### Custom types
