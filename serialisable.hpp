@@ -1166,8 +1166,11 @@ struct Serialiser<bool, void> {
 	}
 };
 
+struct UnusualSerialisable { }; // Inherit from this to avoid using the following serialisation choice
+
 template <typename Serialised>
-struct Serialiser<Serialised, std::enable_if_t<std::is_base_of<Serialisable, Serialised>::value>> {
+struct Serialiser<Serialised, std::enable_if_t<std::is_base_of<Serialisable, Serialised>::value
+		&& !std::is_base_of<UnusualSerialisable, Serialised>::value>> {
 	constexpr static bool valid = true;
 	/*!
 	* \brief Saves an object of a class derived from Serialisable as JSON
@@ -1191,9 +1194,8 @@ struct Serialiser<Serialised, std::enable_if_t<std::is_base_of<Serialisable, Ser
 };
 
 template <typename T>
-struct Serialiser<std::vector<T>, void> {
+struct Serialiser<std::vector<T>, std::enable_if_t<Serialiser<T, void>::valid>> {
 	constexpr static bool valid = true;
-	static_assert (Serialiser<T, void>::valid, "Serialising a vector of non-serialisable types");
 	/*!
 	* \brief Saves a vector of serialisable values
 	* \param The vector
@@ -1220,9 +1222,8 @@ struct Serialiser<std::vector<T>, void> {
 };
 
 template <typename T>
-struct Serialiser<std::unordered_map<std::string, T>, void> {
+struct Serialiser<std::unordered_map<std::string, T>, std::enable_if_t<Serialiser<T, void>::valid>> {
 	constexpr static bool valid = true;
-	static_assert (Serialiser<T, void>::valid, "Serialising a hashtable of non-serialisable types");
 	/*!
 	* \brief Saves a hashtable of serialisable values
 	* \param The vector
@@ -1254,9 +1255,8 @@ struct Serialiser<std::unordered_map<std::string, T>, void> {
 };
 
 template <typename T>
-struct Serialiser<std::shared_ptr<T>, void> {
+struct Serialiser<std::shared_ptr<T>, std::enable_if_t<Serialiser<T, void>::valid>> {
 	constexpr static bool valid = true;
-	static_assert (Serialiser<T, void>::valid, "Serialising a shared_ptr of a non-serialisable type");
 	/*!
 	* \brief Saves a shared pointer to a serialisable value
 	* \param The vector
@@ -1285,9 +1285,8 @@ struct Serialiser<std::shared_ptr<T>, void> {
 };
 
 template <typename T>
-struct Serialiser<std::unique_ptr<T>, void> {
+struct Serialiser<std::unique_ptr<T>, std::enable_if_t<Serialiser<T, void>::valid>> {
 	constexpr static bool valid = true;
-	static_assert (Serialiser<T, void>::valid, "Serialising a unique_ptr of a non-serialisable type");
 	/*!
 	* \brief Saves a unique pointer to a serialisable value
 	* \param The vector
@@ -1347,9 +1346,8 @@ struct Serialiser<std::shared_ptr<Serialisable::JSON>, void> {
 
 #if __cplusplus > 201402L
 template <typename T>
-struct Serialiser<std::optional<T>, void> {
+struct Serialiser<std::optional<T>, std::enable_if_t<Serialiser<T, void>::valid>> {
 	constexpr static bool valid = true;
-	static_assert (Serialiser<T, void>::valid, "Serialising an optional a non-serialisable type");
 	/*!
 	* \brief Saves an optional serialisable value
 	* \param The vector
