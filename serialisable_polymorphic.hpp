@@ -5,7 +5,7 @@
 #include "generic_factory/generic_factory.hpp"
 
 struct SerialisablePolymorphic : public Serialisable, public SerialisableInternals::UnusualSerialisable {
-	constexpr static char typeMember[] = "_pt"; // Shortcut for 'polymorphic type'
+	constexpr static char typeMember[] = "type";
 protected:
 	void subclass(const std::string& newName) {
 		if (saving())

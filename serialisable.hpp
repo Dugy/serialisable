@@ -21,12 +21,16 @@
 #include <unordered_map>
 #include <fstream>
 #include <memory>
+#include <array>
 #include <fstream>
 #include <exception>
 #include <sstream>
 #include <type_traits>
 #include <cmath>
 #include <algorithm>
+#if __cplusplus > 201402L
+#include <optional>
+#endif
 
 class Serialisable;
 
@@ -78,7 +82,7 @@ class Serialisable {
 		constexpr static int MAX_COMMON_OBJECT_ID = 5;
 		constexpr static int MAX_UNCOMMON_OBJECT_ID = MAX_COMMON_OBJECT_ID + 1 + 0xff;
 		constexpr static int MAX_SMALL_UNIQUE_OBJECT_SIZE = 6;
-		constexpr static int STRING_FINAL_BIT_FLIP = 0x80;
+		constexpr static uint8_t STRING_FINAL_BIT_FLIP = 0x80;
 
 		constexpr static int HALF_PRECISION_FLOAT_MASK = 0x7f;
 		constexpr static int SHORT_STRING_MASK = 0x1f;
@@ -262,16 +266,17 @@ public:
 			uint64_t triedBinary = *reinterpret_cast<const uint64_t*>(&_value);
 			double tried = fabs(_value);
 			_hint = Hint::DOUBLE_PRECISION;
+			constexpr Hint preferred = Hint::SERIALISABLE_BY_DUGI_CONDENSED_PREFER_PRECISION;
 			if (tried > std::numeric_limits<float>::max() || (tried < std::numeric_limits<float>::min() && tried > 0))
 				return; // Leave double, number is outside range
-			if (Hint::SERIALISABLE_BY_DUGI_CONDENSED_PREFER_PRECISION != Hint::DOUBLE_PRECISION || float(tried) == tried || (triedBinary & 0x00000000fffffffc)) {
+			if (preferred != Hint::DOUBLE_PRECISION || float(tried) == tried || (triedBinary & 0x00000000fffffffc)) {
 				// Either double is not preferred or it won't lose precision anyway or there are a lot of trailing blank bits
 				_hint = Hint::SINGLE_PRECISION;
 				constexpr float MAX_HALF_PRECISION = 8.57316e+09;
 				constexpr float MIN_HALF_PRECISION_POSITIVE = 9.34961e-10;
 				if (tried > MAX_HALF_PRECISION || (tried < MIN_HALF_PRECISION_POSITIVE && tried > 0))
 					return; // Leave float
-				if (Hint::SERIALISABLE_BY_DUGI_CONDENSED_PREFER_PRECISION == Hint::HALF_PRECISION || (triedBinary & 0x007ffffffffffffc)) {
+				if (preferred == Hint::HALF_PRECISION || (triedBinary & 0x007ffffffffffffc)) {
 					// Either float is not preferred or there are really a lot of trailing blank bits
 					_hint = Hint::HALF_PRECISION;
 				}
@@ -377,7 +382,7 @@ public:
 				buffer.push_back(CondensedInfo::FALSE);
 		}
 	protected:		
-		virtual void addToObjectList(std::unordered_map<std::string, int>&) { }
+		virtual void addToObjectList(std::unordered_map<std::string, int>&) const override { }
 	};
 	struct JSONobject : public JSON {
 		std::unordered_map<std::string, std::shared_ptr<JSON>> _contents;
@@ -692,7 +697,7 @@ private:
 		};
 		auto parseInt = [&] (auto typeIdentificator) {
 			decltype(typeIdentificator) made = 0;
-			for (int i = 0; i < sizeof(typeIdentificator) * 8; i += 8) {
+			for (int i = 0; i < int(sizeof(typeIdentificator)) * 8; i += 8) {
 				next();
 				made |= uint64_t(*source) << i;
 			}
@@ -722,7 +727,7 @@ private:
 			return made;
 		};
 		auto parseObject = [&] (const int index) {
-			if (objects.size() < index + 1)
+			if (int(objects.size()) < index + 1)
 				objects.resize(index + 1);
 			if (!objects[index]) {
 				objects[index] = std::make_unique<std::vector<std::string>>();
