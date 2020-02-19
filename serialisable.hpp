@@ -740,7 +740,7 @@ private:
 
 		next();
 		if (*source & CondensedInfo::HALF_PRECISION_FLOAT) {
-			unsigned long int result = (*source & 0x40ull) << 57; // Sign
+			uint64_t result = (*source & 0x40ull) << 57; // Sign
 			result |= (0x3e0 + (*source & 0x3full)) << 52; // Exponent
 			next();
 			result |= uint64_t(*source) << 44; // Mantissa
