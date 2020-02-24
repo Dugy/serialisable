@@ -9,24 +9,6 @@ It contains a small JSON library to avoid a dependency on a library that is prob
 
 Have your classes inherit from the Serialisable class. They have to implement a `serialisation()` method that calls overloads of the `synch()` method that accepts name of the value in the file as first argument and the value (taken as reference) as the second one. If something needs to be processed before saving or after loading, the `saving()` method will return a bool value telling if it's being saved.
 
-Supported types are:
-* `std::string`
-* floating point types (all stored as `double`)
-* integer types (all stored as `long int`, mostly indistinguishable from `double` in JSON)
-* `bool`
-* any object derived from `Serialisable`
-* a `std::vector` of types that are serialisable themselves
-* an `std::unordered_map` of types that are serialisable themselves, indexed by `std::string`
-* smart pointers to otherwise serialisable types (`null` in JSON stands for `nullptr`)
-* `std::vector<uint8_t>` representing general binary data (stored in string, base64 encoded)
-* `std::optinal` (if C++17 is available)
-
-All of these apply recursively, so it's possible to serialise a `std::shared_ptr<std::unordered_map<std::string, std::vector<int>>>`. It is also possible to enable serialisation of other types.
-
-Default values should be set somewhere, because if a value is missing or `load()` does not find the specified file, it does not call the `serialisation()` method.
-
-Missing keys will simply not load the values. Values of wrong types will throw.
-
 ```C++
 struct Chapter : public Serialisable {
 	std::string contents = "";
@@ -68,6 +50,23 @@ prefs.load("prefs.json");
 prefs.save("prefs.json");
 ```
 
+Supported types are:
+* `std::string`
+* floating point types (all stored as `double`)
+* integer types (all stored as `long int`, mostly indistinguishable from `double` in JSON)
+* `bool`
+* any object derived from `Serialisable`
+* a `std::vector` of types that are serialisable themselves
+* an `std::unordered_map` of types that are serialisable themselves, indexed by `std::string`
+* smart pointers to otherwise serialisable types (`null` in JSON stands for `nullptr`)
+* `std::vector<uint8_t>` representing general binary data (stored in string, base64 encoded)
+* The internal JSON format
+* `std::optinal` (if C++17 is available)
+
+All of these apply recursively, so it's possible to serialise a `std::shared_ptr<std::unordered_map<std::string, std::vector<int>>>`. It is also possible to enable serialisation of other types.
+
+Default values should be set somewhere, because if a value is missing or `load()` does not find the specified file, it does not call the `serialisation()` method. Missing keys will simply not load the values. Values of wrong types will throw.
+
 It relies only on standard libraries, so you can use any C++14 compliant compiler to compile it.
 
 ## JSON library
@@ -77,84 +76,38 @@ The JSON library provided is only to avoid having additional dependencies. It's 
 If you really need to use it, for example if you are sure you will not use it much, here is an example:
 
 ``` C++
-Serialisable::JSONobject testJson;
-testJson.getObject()["file"] = std::make_shared<Serialisable::JSONstring>("test.json");
-testJson.getObject()["number"] = std::make_shared<Serialisable::JSONdouble>(9);
-testJson.getObject()["makes_sense"] = std::make_shared<Serialisable::JSONbool>(false);
-std::shared_ptr<Serialisable::JSONarray> array = std::make_shared<Serialisable::JSONarray>();
-for (int i = 0; i < 3; i++) {
-	std::shared_ptr<Serialisable::JSONobject> obj = std::make_shared<Serialisable::JSONobject>();
-	obj->getObject()["index"] = std::make_shared<Serialisable::JSONdouble>(i);
-	std::shared_ptr<Serialisable::JSONobject> obj2 = std::make_shared<Serialisable::JSONobject>();
-	obj->getObject()["contents"] = obj2;
-	obj2->getObject()["empty"] = std::make_shared<Serialisable::JSONobject>();
-	array->getVector().push_back(obj);
-}
-testJson.getObject()["data"] = array;
-testJson.writeToFile("test.json");
+	Serialisable::JSON testJson;
+	testJson.setObject()["file"] = "test.json";
+	testJson["number"] = 9;
+	testJson["float_number"] = 9.0;
+	testJson["makes_sense"] = false;
+	Serialisable::JSON array;
+	array.setArray();
+	for (int i = 0; i < 3; i++) {
+		Serialisable::JSON obj;
+		obj.setObject()["index"] = i;
+		Serialisable::JSON obj2;
+		obj2.setObject()["empty"] = Serialisable::JSON();
+		obj["contents"] = obj2;
+		array.push_back(obj);
+	}
+	testJson["data"] = array;
+	testJson.save("test.json");
 
-std::shared_ptr<Serialisable::JSON> testReadJson = Serialisable::parseJSON("test.json");
-testReadJson->getObject()["makes_sense"]->getBool() = true;
-testReadJson->getObject()["number"]->getDouble() = 42;
-testReadJson->writeToFile("test-reread.json");
+	Serialisable::JSON testReadJson = Serialisable::JSON::load("test.json");
+	testReadJson["makes_sense"] = true;
+	testReadJson["number"] = 42;
+	testReadJson["float_number"] = 4.9;
+	testReadJson.save("test-reread.json");
 ```
 
-The structure consists of JSON nodes of various types. They all have the same methods for accessing the contents returning references to the correct types (`getString()`, `getDouble()`, `getBool()`, `getObject()` and `getArray()`), but they are all virtual and only the correct one will not throw an exception. The type can be learned using the `type()` method. The interface class `Serialisable::JSON` is also the _null_ type.
+The `JSON` object uses the nan-boxing technique to be very space efficient with high locality. Its size is the same as the size of a `double` and can store numbers, bools, nulls, short strings locally or pointers to longer strings, arrays or hashtables. Moving it and copying it is cheap, because string values are copy on write and arrays and hashtables are not copied (they are reference counted). Although this is mostly for convenience, its copying behaviour is identical to JavaScript data structures.
+
+The internal type can be checked using its `type()` method. The contents can be accessed using the right getter/setter, such as `number()`, `boolean()` etc. Assignment or implicit conversion can be used too. Operator `[]` is overloaded for strings and numbers to shorten access to arrays and hashtables. `push_back()` and `size()` can also be accessed directly without calling the `array()` or `object()` getters. If contents of an incorrect type are accessed, an exception is thrown. In order to set the type to array or object, use the `setArray()` and `setObject()` methods respectively (they also work as getters).
 
 The parser can parse incorrect code in some cases because some of the information in JSON files is redundant.
 
-If necessary, `shared_ptr<JSON>` can also be a serialised member if the `synch` method is used on it.
-
-## A more condensed format
-
-This is a binary markup language designed to use as little space as possible while keeping the same expressive power than JSON (and is thus directly convertible to JSON and back). It's also significantly more space efficient than BSON and Packed JSON. However, it's slow to write. Its only purpose is to take as little space as possible while keeping the versatility of JSON. It's not a compression algorithm, so it can be compressed afterwards to further reduce the size if it contains a lot of strings.
-
-It can be accessed using methods `serialiseCondensed()` and `deserialise()`, using data saved in a `std::vector<uint8_t>`:
-
-```C++
-// Assuming 'value' inherits from Serialisable
-std::vector<uint8_t> data = value.serialiseCondensed();
-//...
-std::vector<uint8_t> data = read(source);
-value.deserialise(data);
-```
-
-It might wrongly guess the number of significant digits of floating point numbers without hints. Use `double` types for lossless encoding of numbers and `float` if the precision isn't important.
-
-In most cases, it uses one byte of markup per value, only long strings and some composite objects need two bytes. Small integers and boolean values are included in the markup bytes and take no additional space themselves. ASCII-only element names in objects are only as long as the strings themselves and the element names are stored only once if there are more objects with the same element names.
-
-### Encoding
-
-It has more types than JSON, but they are selected automatically for better space efficiency and translate to the same JSON. The types are marked with binary prefixes, while the prefixes may contain data themselves:
-* **1xxxxxxx** - forms a 15 bit float with the next byte (almost half-precision), 1 bit is sign, 6 are exponent, 8 are mantissa, so the imprecision is about 0.2% and maximal value is in the order of ten power 9 *(total size is 2)*
-* **011xxxxx** - string of size below 30, size is stored in the remaining bits *(total size is length + 1)*
-* **01111110** - reserved
-* **01111111** - long string, zero-terminated *(total size is length + 2)*
-* **010xxxxx** - 5 bit signed integer, saved in the type *(total size is 1)*
-* **00111xxx** - object whose member names must contain ASCII-symbols and objects with the same layout appear more than once in the JSON, first occurrence comes with a zero-terminated definition of all member names terminated by the most significant bit flipped, last three bits form the identifier *(total size of object is contents + 1 and once element names + 1)*
-* **00111101** - reserved
-* **00111110** - same, but identifier is the following byte *(total size of object is contents + 2 and once element names + 1)*
-* **00111111** - same, but the identifier are the two following bytes *(total size of object is contents + 3 and once element names + 1)*
-* **00110xxx** - small object with layout appearing only once, with max size up to 5 written in the type, with ASCII-only element names first and contents after *(total size is contents + element names + 1)*
-* **00110110** - large object whose zero-terminated names list must contain ASCII-symbols only *(total size is of object is contents + element names + 2)*
-* **00110111** - large, zero-terminated hashtable/object whose zero terminated member names do not contain only ASCII-symbols *(total size is contents + element names + number of elements + 2)*
-* **0010xxxx** - array of size up to 14, size is a part of the type, size is stored in the type *(total size 1 + total size of contents)*
-* **00101110** - reserved
-* **00101111** - large, zero-terminated array of objects *(total size is 2 + total size of contents)*
-* **0001xxxx** - forms a 12 bit signed integer with the following byte *(size is 2)*
-* **00001111** - double (written in little endian, least significant bit goes first) *(size is 9)*
-* **00001110** - float *(size is 5)*
-* **00001101** - signed 64 bit integer *(size is 9)*
-* **00001100** - unsigned 64 bit integer *(size is 9)*
-* **00001011** - signed 32 bit integer *(size is 5)*
-* **00001010** - unsigned 32 bit integer *(size is 5)*
-* **00001001** - signed 16 bit integer *(size is 3)*
-* **00001000** - unsigned 16 bit integer *(size is 3)*
-* **000001xx** - reserved
-* **00000011** - true *(size is 1)*
-* **00000010** - false *(size is 1)*
-* **00000001** - null *(size is 1)*
-* **00000000** - zero termination, for terminating strings, objects/hashtables and arrays too large to have their sizes in the type byte *(size is counted to types that need it)*
+If necessary, `JSON` can also be a serialised member if the `synch` method is used on it.
 
 ## Optional extensions
 
@@ -186,6 +139,54 @@ struct ChapterInfo : public SerialisableBrief {
 **Important:** if a member is *not* to be serialised, it has to be initialised with the `skip()` method (optionally taking constructor arguments; usable also for types that cannot be serialised by `Serialisable`). Otherwise, undefined behaviour is very likely to occur when serialising/deserialising the next member, without any warning. This applies also to any classes that inherit from it unless none of them uses any further serialisation. Therefore, this should be used only for classes that hold data and don't have much other functionality. You have been warned.
 
 The cost of this brevity is proneness to human errors, obscure code and lower performance, especially when constructing the objects. To avoid forgetting the `skip()` method, it's better to use `Serialisable` instead for more complex classes that aren't only for storing data. To reduce overhead, it's recommended to copy or move the objects instead of creating new ones (for example by copying a static object from a factory method).
+
+### A more condensed format
+
+This is a binary markup language designed to use as little space as possible while keeping the same expressive power than JSON (and is thus directly convertible to JSON and back). It's also significantly more space efficient than BSON, Packed JSON. It's also more space efficient than MessagePack. However, it's slow to write. Its only purpose is to take as little space as possible while keeping the versatility of JSON. It's not a compression algorithm, so under some circumstances, it might be compressed afterwards to further reduce the size if (for example if it contains a lot of strings).
+
+You need to include `condensed_json.hpp` for it to work. It can be accessed using methods `to<CondensedJSON>()` and `from<CondensedJSON()` or `saveAs<CondensedJSON>()` and `loadAs<CondensedJSON>()`, using data saved in a `std::vector<uint8_t>`:
+
+```C++
+// Assuming 'value' inherits from Serialisable
+std::vector<uint8_t> data = value.to<CondensedJSON>();
+//...
+value.loadAs<CondensedJSON>();
+```
+
+In most cases, it uses one byte of markup per value, only long strings and some composite objects need two bytes. Small integers and boolean values are included in the markup bytes and take no additional space themselves. ASCII-only element names in objects are only as long as the strings themselves and the element names are stored only once if there are more objects with the same element names.
+
+#### Encoding
+
+It has more types than JSON, but they are selected automatically for better space efficiency and translate to the same JSON. The types are marked with binary prefixes, while the prefixes may contain data themselves:
+* **1xxxxxxx** - forms a 15 bit float with the next byte (almost half-precision), 1 bit is sign, 6 are exponent, 8 are mantissa, so the imprecision is about 0.2% and maximal value is in the order of ten power 9 *(total size is 2)*
+* **011xxxxx** - string of size below 30, size is stored in the remaining bits *(total size is length + 1)*
+* **01111110** - reserved
+* **01111111** - long string, zero-terminated *(total size is length + 2)*
+* **010xxxxx** - 5 bit signed integer, saved in the type *(total size is 1)*
+* **00111xxx** - object whose member names must contain ASCII-symbols and objects with the same layout appear more than once in the JSON, first occurrence comes with a zero-terminated definition of all member names terminated by the most significant bit flipped, last three bits form the identifier *(total size of object is contents + 1 and once element names + 1)*
+* **00111101** - reserved
+* **00111110** - same, but identifier is the following byte *(total size of object is contents + 2 and once element names + 1)*
+* **00111111** - same, but the identifier are the two following bytes *(total size of object is contents + 3 and once element names + 1)*
+* **00110xxx** - small object with layout appearing only once, with max size up to 5 written in the type, with ASCII-only element names first and contents after *(total size is contents + element names + 1)*
+* **00110110** - large object whose zero-terminated names list must contain ASCII-symbols only *(total size is of object is contents + element names + 2)*
+* **00110111** - large, zero-terminated hashtable/object whose zero terminated member names do not contain only ASCII-symbols *(total size is contents + element names + number of elements + 2)*
+* **0010xxxx** - array of size up to 14, size is a part of the type, size is stored in the type *(total size 1 + total size of contents)*
+* **00101110** - reserved
+* **00101111** - large, zero-terminated array of objects *(total size is 2 + total size of contents)*
+* **0001xxxx** - forms a 12 bit signed integer with the following byte *(size is 2)*
+* **00001111** - double (written in little endian, least significant bit goes first) *(size is 9)*
+* **00001110** - float *(size is 5)*
+* **00001101** - signed 64 bit integer *(size is 9)*
+* **00001100** - unsigned 64 bit integer *(size is 9)*
+* **00001011** - signed 32 bit integer *(size is 5)*
+* **00001010** - unsigned 32 bit integer *(size is 5)*
+* **00001001** - signed 16 bit integer *(size is 3)*
+* **00001000** - unsigned 16 bit integer *(size is 3)*
+* **000001xx** - reserved
+* **00000011** - true *(size is 1)*
+* **00000010** - false *(size is 1)*
+* **00000001** - null *(size is 1)*
+* **00000000** - zero termination, for terminating strings, objects/hashtables and arrays too large to have their sizes in the type byte *(size is counted to types that need it)*
 
 ### SerialisablePolymorphic - different classes in one field
 

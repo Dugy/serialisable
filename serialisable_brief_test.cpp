@@ -29,29 +29,6 @@ struct Preferences : public SerialisableBrief {
 };
 
 int main() {
-	Serialisable::JSONobject testJson;
-	testJson.getObject()["file"] = std::make_shared<Serialisable::JSONstring>("test.json");
-	testJson.getObject()["number"] = std::make_shared<Serialisable::JSONint>(9);
-	testJson.getObject()["float_number"] = std::make_shared<Serialisable::JSONdouble>(9);
-	testJson.getObject()["makes_sense"] = std::make_shared<Serialisable::JSONbool>(false);
-	std::shared_ptr<Serialisable::JSONarray> array = std::make_shared<Serialisable::JSONarray>();
-	for (int i = 0; i < 3; i++) {
-		std::shared_ptr<Serialisable::JSONobject> obj = std::make_shared<Serialisable::JSONobject>();
-		obj->getObject()["index"] = std::make_shared<Serialisable::JSONint>(i);
-		std::shared_ptr<Serialisable::JSONobject> obj2 = std::make_shared<Serialisable::JSONobject>();
-		obj->getObject()["contents"] = obj2;
-		obj2->getObject()["empty"] = std::make_shared<Serialisable::JSONobject>();
-		array->getVector().push_back(obj);
-	}
-	testJson.getObject()["data"] = array;
-	testJson.writeToFile("test.json");
-
-	std::shared_ptr<Serialisable::JSON> testReadJson = Serialisable::parseJSON("test.json");
-	testReadJson->getObject()["makes_sense"]->getBool() = true;
-	testReadJson->getObject()["number"]->getInt() = 42;
-	testReadJson->getObject()["float_number"]->getDouble() = 4.9;
-	testReadJson->writeToFile("test-reread.json");
-
 	Preferences prefs;
 	prefs.load("prefs.json");
 	prefs.footnotes.push_back(std::make_shared<Chapter>());

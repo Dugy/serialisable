@@ -32,18 +32,18 @@ template <typename Serialised>
 struct Serialiser<std::shared_ptr<Serialised>, std::enable_if_t<std::is_base_of<SerialisablePolymorphic, Serialised>::value>> {
 	constexpr static bool valid = true;
 
-	static std::shared_ptr<Serialisable::JSON> serialise(const std::shared_ptr<Serialised>& value) {
+	static Serialisable::JSON serialise(const std::shared_ptr<Serialised>& value) {
 		if (value)
 			return value->toJSON();
 		else
-			return std::make_shared<Serialisable::JSON>(); // null
+			return Serialisable::JSON(); // null
 	}
 
-	static void deserialise(std::shared_ptr<Serialised>& result, std::shared_ptr<Serialisable::JSON> value) {
-		auto type = value->getObject().find(SerialisablePolymorphic::typeMember);
-		if (type == value->getObject().end())
+	static void deserialise(std::shared_ptr<Serialised>& result, Serialisable::JSON value) {
+		auto type = value.object().find(SerialisablePolymorphic::typeMember);
+		if (type == value.object().end())
 			throw Serialisable::SerialisationError("Missing type information of polymorphic type");
-		result = GenericFactory<Serialised>::createChild(type->second->getString());
+		result = GenericFactory<Serialised>::createChild(type->second.string());
 		result->fromJSON(value);
 	}
 };
@@ -52,18 +52,18 @@ template <typename Serialised>
 struct Serialiser<std::unique_ptr<Serialised>, std::enable_if_t<std::is_base_of<SerialisablePolymorphic, Serialised>::value>> {
 	constexpr static bool valid = true;
 
-	static std::shared_ptr<Serialisable::JSON> serialise(const std::unique_ptr<Serialised>& value) {
+	static Serialisable::JSON serialise(const std::unique_ptr<Serialised>& value) {
 		if (value)
 			return value->toJSON();
 		else
-			return std::make_shared<Serialisable::JSON>(); // null
+			return Serialisable::JSON(); // null
 	}
 
-	static void deserialise(std::unique_ptr<Serialised>& result, std::shared_ptr<Serialisable::JSON> value) {
-		auto type = value->getObject().find(SerialisablePolymorphic::typeMember);
-		if (type == value->getObject().end())
+	static void deserialise(std::unique_ptr<Serialised>& result, Serialisable::JSON value) {
+		auto type = value.object().find(SerialisablePolymorphic::typeMember);
+		if (type == value.object().end())
 			throw Serialisable::SerialisationError("Missing type information of polymorphic type");
-		result = GenericFactory<Serialised>::createChild(type->second->getString());
+		result = GenericFactory<Serialised>::createChild(type->second.string());
 		result->fromJSON(value);
 	}
 };

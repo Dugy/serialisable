@@ -1,6 +1,7 @@
 #include <iostream>
 #include <iterator>
 #include "serialisable.hpp"
+#include "condensed_json.hpp"
 
 int main(int argc, char** argv) {
 	if (argc != 2) {
@@ -11,15 +12,9 @@ int main(int argc, char** argv) {
 	const auto dotLocation = fileName.find_last_of('.');
 	std::string name = (dotLocation != std::string::npos) ? fileName.substr(0, dotLocation) : fileName;
 	if (dotLocation != std::string::npos && fileName.substr(dotLocation + 1) == "json") {
-		std::ifstream input(fileName);
-		if (!input.good()) {
-			std::cerr << "Cannot read file: " << fileName << std::endl;
-			return 2;
-		}
-		std::shared_ptr<Serialisable::JSON> json = Serialisable::parseJSON(input);
-		input.close();
-		json->writeToFile("readCheck.json");
-		std::vector<uint8_t> outVector = json->condensed();
+		Serialisable::JSON json = Serialisable::JSON::load(fileName);
+		json.save("readCheck.json");
+		std::vector<uint8_t> outVector = json.to<CondensedJSON>();
 		std::string outputName = name + ".cjson";
 		std::ofstream output(outputName);
 		if (!output.good()) {
@@ -37,14 +32,9 @@ int main(int argc, char** argv) {
 		}
 		std::vector<uint8_t> inputVector(std::istreambuf_iterator<char>(input), {});
 		input.close();
-		std::shared_ptr<Serialisable::JSON> json = Serialisable::parseCondensed(inputVector);
+		Serialisable::JSON json = Serialisable::JSON::from<CondensedJSON>(inputVector);
 		std::string outputName = name + ".json";
-		std::ofstream output(outputName, std::ios::binary);
-		if (!output.good()) {
-			std::cerr << "Cannot write file: " << outputName << std::endl;
-			return 2;
-		}
-		json->write(output);
+		json.save(outputName);
 	}
 	return 0;
 }
