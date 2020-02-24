@@ -111,9 +111,9 @@ If necessary, `JSON` can also be a serialised member if the `synch` method is us
 
 ## Optional extensions
 
-Although its extensibility is not as good as it could be, it is possible to extend it. Some extensions are available in this repository.
+This tool can be extended with custom data types to be serialised and custom ways to save the data into files (however, they must be representable as JSON).
 
-I would like the condensed format to be also an extension, but I haven't figured out how to do it without making the library less convenient to use.
+Here are some optional extensions that come with this repository.
 
 ### SerialisableBrief - write even less code
 
@@ -282,3 +282,17 @@ struct Serialiser<std::map<std::string, T>, std::enable_if_t<Serialiser<T, void>
 ```
 
 To implement a custom serialisation for a custom class that does inherit from `Serialisable`, have it inherit from `SerialisableInternals::UnusualSerialisable` as well, which will stop the default serialisation functions from being selected.
+
+### Custom file types
+
+Suport for custom types can be added by implementing a class that can serialise and deserialise the internal JSON representation into data. The class must contain:
+* A static method called `serialise` that accepts the JSON and returns its representation in an iterable container (`std::string` or `std::vector<uint8_t>` is fine)
+* A static method called `deserialise` that accepts the representation of the type returned by `serialise` and returns the internal JSON representation
+
+For a special implementation for writing into files, you can use:
+* A static method named `toStream` that accepts the internal JSON representation, a reference to an ostream and any number of parameters with default values (usable in recursion)
+* A static method named `fromStream` that returns the internal JSON representation, and accepts a reference to an istream and any number of parameters with default values (usable in recursion)
+
+Otherwise, the first two methods will be used.
+
+So if the class is named `PDF`, then you can use it to convert into the format using the `to<PDF>()` and `from<PDF>()` methods and to save them to files using the `saveAs<PDF>()` and `loadAs<PDF>()` methods (both on `Serialisable` and `Serialisable::JSON`).
