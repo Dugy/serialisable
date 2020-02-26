@@ -123,20 +123,23 @@ It allows serialising with even less code:
 ```C++
 struct Chapter : public SerialisableBrief {
 	std::string contents = key("contents");
-	std::string author = key("author").init("Anonymous");
+	std::string author = key("author") = "Anonymous";
+	int readers = key("read_by") = 0;
 };
 ```
-It does the same as the `Chapter` class in the section above. The members must be initialised with the `key()` method, whose argument is the key of the field in JSON. The members can be optionally initialised using the `init()` method that takes any number of arguments that will be fed to the constructor (if not used, it will be default-initialised; brace-enclosed initialisers cannot be used). This can be shortened by adding any number of arguments after the first argument to the `key()` method, the additional arguments will be given to the constructor. This uses `Serialisable` to actually convert the variables to JSON, so it can serialise the same types as `Serialisable` can.
+It does the same as the `Chapter` class in the section above. The members must be initialised with the `key()` method, whose argument is the key of the field in JSON. The members can be optionally initialised for real by assigning into the result of the `key()` method call.
+
+The members can also be initialised using the `init()` method that takes any number of arguments that will be fed to the constructor (if not used, it will be default-initialised; brace-enclosed initialisers cannot be used). This can be shortened by adding any number of arguments after the first argument to the `key()` method, the additional arguments will be given to the constructor. This uses `Serialisable` to actually convert the variables to JSON, so it can serialise the same types as `Serialisable` can.
 
 ```C++
 struct ChapterInfo : public SerialisableBrief {
-	std::mutex lock = skip();
+	std::unordered_set<std::string> currentReaders = skip();
 	int pages = key("pages").init(100);
 	std::string summary = key("summary", "Some interesting stuff");
 };
 ```
 
-**Important:** if a member is *not* to be serialised, it has to be initialised with the `skip()` method (optionally taking constructor arguments; usable also for types that cannot be serialised by `Serialisable`). Otherwise, undefined behaviour is very likely to occur when serialising/deserialising the next member, without any warning. This applies also to any classes that inherit from it unless none of them uses any further serialisation. Therefore, this should be used only for classes that hold data and don't have much other functionality. You have been warned.
+**Important:** if a member is *not* to be serialised, it has to be initialised with the `skip()` method (can be initialised the same way as with `key()`; it's usable also for types that cannot be serialised by `Serialisable`). Otherwise, undefined behaviour is very likely to occur when serialising/deserialising the next member, without any warning (there is a detection mechanism that throws exceptions in constructor, but it's not reliable). This applies also to any classes that inherit from it unless none of them uses any further serialisation. Therefore, this should be used only for classes that hold data and don't have much other functionality. You have been warned.
 
 The cost of this brevity is proneness to human errors, obscure code and lower performance, especially when constructing the objects. To avoid forgetting the `skip()` method, it's better to use `Serialisable` instead for more complex classes that aren't only for storing data. To reduce overhead, it's recommended to copy or move the objects instead of creating new ones (for example by copying a static object from a factory method).
 

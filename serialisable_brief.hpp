@@ -163,6 +163,10 @@ protected:
 		SubSerialiserInitialised<Args...> init(Args... args) {
 			return SubSerialiserInitialised<Args...>(_parent, _name, _serialised, args...);
 		}
+		template <typename Arg>
+		SubSerialiserInitialised<Arg> operator=(Arg arg) {
+			return SubSerialiserInitialised<Arg>(_parent, _name, _serialised, arg);
+		}
 
 		friend class SerialisableBrief;
 	};
