@@ -192,7 +192,6 @@ It has more types than JSON, but they are selected automatically for better spac
 * **00000000** - zero termination, for terminating strings, objects/hashtables and arrays too large to have their sizes in the type byte *(size is counted to types that need it)*
 
 ### SerialisablePolymorphic - different classes in one field
-
 If a field can contain various types of objects, it can be dealt with by keeping it in the JSON format and dealing with it later, but `serialisable_polymorphic.hpp` makes it more convenient. It uses [GenericFactory](https://github.com/Dugy/generic_factory), a small, header-only library providing a generic implementation of the self-registering factory pattern. You will have to add it to your project in order to use this tool.
 
 It allows descendants of a certain parent class that inherits from `SerialisablePolymorphic` to be selected according to a specific key that identifies the type (`_pt`). The parent class can be `SerialisablePolymorphic` itself. Every subclass registers itself as a descendant with some name of the parent class. Then the right subclass can be selected when loading the JSON.
@@ -245,6 +244,18 @@ If you don't have C++17, it's not possible to use `inline static` variables, so 
 REGISTER_CHILD_INTO_FACTORY(ContentType, Content1, "c1");
 // Must be in the same namespace as the class, but not inside the class
 ```
+
+### Better enums
+Before `reflexpr` is finished and its support is added to all major compilers (probably in C++23), there's no standard-compliant way to determine the human-readable value of an enum without some kind of dictionary. Because `reflexpr` would allow massive improvements to this library, a way of producing human readable values of enums has to be provided differently.
+
+The [Better Enums](https://github.com/aantron/better-enums) library implements a macro that can create an enum-like structure that can be conveniently converted into string and back and plenty of other handy utilities.
+
+If you have it in your project, include `serialisable_better_enum.hpp` to be able to serialise better enums as well.
+
+Note: better enums are identified using duck typing, so there is a small chance that it would be mistaken for another class with very similar external interface.
+
+## Extending it yourself
+The functionality can be extended to some extent without editing the original files.
 
 ### Custom types
 

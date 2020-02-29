@@ -1212,8 +1212,6 @@ struct Serialiser<Serialised, std::enable_if_t<std::is_floating_point<Serialised
 	* \brief Saves an arithmetic floating point value
 	* \param The value
 	* \return The constructed JSON
-	* \note If the type used is double precision, condensed JSON will always be double precision
-	* if the value is single precision, the precision of condensed JSON will be guessed
 	*/
 	static Serialisable::JSON serialise(Serialised value) {
 		return Serialisable::JSON(value);
@@ -1280,8 +1278,6 @@ struct Serialiser<Serialised, std::enable_if_t<std::is_enum<Serialised>::value>>
 	* \brief Saves an enum as integer
 	* \param The value
 	* \return The constructed JSON
-	* \note If the type used is double precision, condensed JSON will always be double precision
-	* if the value is single precision, the precision of condensed JSON will be guessed
 	*/
 	static Serialisable::JSON serialise(Serialised value) {
 		return Serialisable::JSON(std::underlying_type_t<Serialised>(value));
@@ -1329,8 +1325,6 @@ struct Serialiser<Serialised, std::enable_if_t<std::is_base_of<Serialisable, Ser
 	* \brief Saves an object of a class derived from Serialisable as JSON
 	* \param The object
 	* \return The constructed JSON
-	* \note If the type used is double precision, condensed JSON will always be double precision
-	* if the value is single precision, the precision of condensed JSON will be guessed
 	*/
 	static Serialisable::JSON serialise(Serialised value) {
 		return value.toJSON();
