@@ -246,7 +246,7 @@ REGISTER_CHILD_INTO_FACTORY(ContentType, Content1, "c1");
 ```
 
 ### Better enums
-Before `reflexpr` is finished and its support is added to all major compilers (probably in C++23), there's no standard-compliant way to determine the human-readable value of an enum without some kind of dictionary. Because `reflexpr` would allow massive improvements to this library, a way of producing human readable values of enums has to be provided differently.
+Before `reflexpr` is finished and its support is added to all major compilers (probably in C++23), there's no standard-compliant way to determine the human-readable value of an enum without some kind of dictionary. Because `reflexpr` would make most of this library useless, it's better not to wait for it.
 
 The [Better Enums](https://github.com/aantron/better-enums) library implements a macro that can create an enum-like structure that can be conveniently converted into string and back and plenty of other handy utilities.
 
