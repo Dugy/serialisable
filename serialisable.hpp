@@ -907,7 +907,7 @@ std::ostream& operator<<(std::ostream& stream , const Serialisable::JSON::String
 std::ostream& operator<<(std::ostream& stream , const Serialisable::JSON& json) {
 	switch (json._contents & Serialisable::JSON::TYPE_MASK) {
 	case Serialisable::JSON::InternalType::NIL:
-		stream << std::string("nil");
+		stream << std::string("null");
 		break;
 	case Serialisable::JSON::InternalType::BOOLEAN:
 		stream << std::string(json.boolean() ? "true" : "false");
