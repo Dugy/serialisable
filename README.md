@@ -143,6 +143,40 @@ struct ChapterInfo : public SerialisableBrief {
 
 The cost of this brevity is proneness to human errors, obscure code and lower performance, especially when constructing the objects. To avoid forgetting the `skip()` method, it's better to use `Serialisable` instead for more complex classes that aren't only for storing data. To reduce overhead, it's recommended to copy or move the objects instead of creating new ones (for example by copying a static object from a factory method).
 
+### SerialisableAny - serialise simple types effortlessly
+
+Some struct types are simple enough to be considered heterogeneous arrays rather than classes. There's no way to learn the member names, so they have to be identified only as indexes of an array.
+
+For this to work, the class must be aggregate-initialisable and have no parent class. Simplified rules for aggregate-initialisability are:
+* No private members
+* No written constructor
+* No virtual member functions
+
+Methods and default member values are allowed.
+
+```C++
+struct Unsupported {
+	int a = 3;
+	std::string b = "I am not gay.";
+	float c = 4.5;
+	bool d = true;
+	std::shared_ptr<std::string> e = nullptr;
+	short int f = 13;
+	double g = 14.34;
+	struct {
+		int a;
+		double b;
+	} h;
+};
+
+std::string source = "[15, \"High albedo, low roughness\", 17.424, false, null, 18, 123.214, [814, 241.134]]";
+Unsupported made = readJsonObject<Unsupported>(source);
+std::cout << "Member test: " << made.b << std::endl;
+Serialisable::JSON remade = writeJsonObject(made);
+std::cout << "Reserialised: " << remade << std::endl;
+```
+If C++17 is not available, member objects cannot have default values and must contain only primitive types and objects that are already allowed to be member objects.
+
 ### A more condensed format
 
 This is a binary markup language designed to use as little space as possible while keeping the same expressive power than JSON (and is thus directly convertible to JSON and back). It's also significantly more space efficient than BSON, Packed JSON. It's also more space efficient than MessagePack. However, it's slow to write. Its only purpose is to take as little space as possible while keeping the versatility of JSON. It's not a compression algorithm, so under some circumstances, it might be compressed afterwards to further reduce the size if (for example if it contains a lot of strings).
