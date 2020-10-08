@@ -60,12 +60,10 @@ struct DiskAccessor {
 		return Format::deserialise(making);
 	}
 };
+} // namespace
 
-}
+struct ISerialisable {
 
-class Serialisable {
-
-public:
 	struct SerialisationError : std::runtime_error {
 		using std::runtime_error::runtime_error;
 	};
@@ -232,7 +230,7 @@ public:
 		};
 
 		struct StringHasher {
-			std::size_t operator()(const Serialisable::JSON::String& key) const
+			std::size_t operator()(const ISerialisable::JSON::String& key) const
 			{
 				return key.hash();
 			}
@@ -650,8 +648,118 @@ public:
 		friend std::ostream& operator<<(std::ostream& stream , const JSON& json);
 	};
 
-private:
+	virtual JSON toJSON() const = 0;
+	virtual void fromJSON(const JSON& source) = 0;
 
+
+	/*!
+	* \brief Serialises the object as a custom type
+	* \tparam A class with a static method serialise(JSON)
+	* \return The serialised value
+	*
+	* \note It calls the overloaded serialisation() method
+	* \note Not only that it's not thread-safe, it's not even reentrant
+	*/
+	template <typename Format>
+	auto to() const {
+		return toJSON().to<Format>();
+	}
+
+	/*!
+	* \brief Deserialises the object from a custom type
+	* \tparam A class with a static method deserialise() that returns JSON
+	* \param The value to be deserialised
+	*
+	* \note It calls the overloaded serialisation() method
+	* \note Not only that it's not thread-safe, it's not even reentrant
+	*/
+	template <typename Format, typename SourceType>
+	void from(const SourceType& source) {
+		fromJSON(JSON::from<Format>(source));
+	}
+
+	/*!
+	* \brief Serialises the object to a JSON string
+	* \return The JSON string
+	*
+	* \note It calls the overloaded serialisation() method
+	* \note Not only that it's not thread-safe, it's not even reentrant
+	*/
+	inline std::string toString() const {
+		return toJSON().toString();
+	}
+
+	/*!
+	* \brief Loads the object from a JSON string
+	* \param The JSON string
+	*
+	* \note It calls the overloaded serialisation() method
+	* \note If the string is blank, nothing is done
+	* \note Not only that it's not thread-safe, it's not even reentrant
+	*/
+	inline void fromString(const std::string& source) {
+		fromJSON(JSON::fromString(source));
+	}
+
+	/*!
+	* \brief Saves the object to a custom format file
+	* \tparam The format
+	* \param The name of the file
+	*
+	* \note It calls the overloaded serialisation() method
+	* \note Not only that it's not thread-safe, it's not even reentrant
+	*/
+	template <typename Format>
+	void saveAs(const std::string& fileName) const {
+		toJSON().saveAs<Format>(fileName);
+	}
+
+	/*!
+	* \brief Loads the object from a custom format file
+	* \tparam The format
+	* \param The name of the file
+	*
+	* \note It calls the overloaded serialisation() method
+	* \note Not only that it's not thread-safe, it's not even reentrant
+	*/
+	template <typename Format>
+	void loadAs(const std::string& fileName) {
+		fromJSON(JSON::loadAs<Format>(fileName));
+	}
+
+	/*!
+	* \brief Loads the object from a JSON file
+	* \param The name of the JSON file
+	*
+	* \note It calls the overloaded serialisation() method
+	* \note If the file cannot be read, nothing is done
+	* \note Not only that it's not thread-safe, it's not even reentrant
+	*/
+	inline void load(const std::string& fileName) {
+		fromJSON(JSON::load(fileName));
+	}
+
+	/*!
+	* \brief Saves the object to a JSON file
+	* \param The name of the JSON file
+	*
+	* \note It calls the overloaded serialisation() method
+	* \note Not only that it's not thread-safe, it's not even reentrant
+	*/
+	inline void save(const std::string& fileName) const {
+		toJSON().save(fileName);
+	}
+};
+
+class Serialisable : ISerialisable {
+
+public:
+
+	using SerialisationError = ISerialisable::SerialisationError;
+	using JSONtype = ISerialisable::JSONtype;
+	using JSON = ISerialisable::JSON;
+
+private:
 	static const char* base64chars() {
 		static const char* held = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 		return held;
@@ -771,7 +879,7 @@ public:
 	* \note It calls the overloaded serialisation() method
 	* \note Not only that it's not thread-safe, it's not even reentrant
 	*/
-	inline JSON toJSON() const {
+	inline JSON toJSON() const override {
 		_json.setObject();
 		_saving = true;
 		const_cast<Serialisable*>(this)->serialisation();
@@ -786,7 +894,7 @@ public:
 	* \note If the string is blank, nothing is done
 	* \note Not only that it's not thread-safe, it's not even reentrant
 	*/
-	inline void fromJSON(const JSON& source) {
+	inline void fromJSON(const JSON& source) override {
 		JSON::Type type = source.type();
 		if (type == JSON::Type::NIL) {
 			// Maybe once should this optionally throw an exception?
@@ -798,104 +906,6 @@ public:
 		_saving = false;
 		serialisation();
 		_json = nullptr;
-	}
-
-	/*!
-	* \brief Serialises the object as a custom type
-	* \tparam A class with a static method serialise(JSON)
-	* \return The serialised value
-	*
-	* \note It calls the overloaded serialisation() method
-	* \note Not only that it's not thread-safe, it's not even reentrant
-	*/
-	template <typename Format>
-	auto to() const {
-		return toJSON().to<Format>();
-	}
-
-	/*!
-	* \brief Deserialises the object from a custom type
-	* \tparam A class with a static method deserialise() that returns JSON
-	* \param The value to be deserialised
-	*
-	* \note It calls the overloaded serialisation() method
-	* \note Not only that it's not thread-safe, it's not even reentrant
-	*/
-	template <typename Format, typename SourceType>
-	void from(const SourceType& source) {
-		fromJSON(JSON::from<Format>(source));
-	}
-
-	/*!
-	* \brief Serialises the object to a JSON string
-	* \return The JSON string
-	*
-	* \note It calls the overloaded serialisation() method
-	* \note Not only that it's not thread-safe, it's not even reentrant
-	*/
-	inline std::string toString() const {
-		return toJSON().toString();
-	}
-
-	/*!
-	* \brief Loads the object from a JSON string
-	* \param The JSON string
-	*
-	* \note It calls the overloaded serialisation() method
-	* \note If the string is blank, nothing is done
-	* \note Not only that it's not thread-safe, it's not even reentrant
-	*/
-	inline void fromString(const std::string& source) {
-		fromJSON(JSON::fromString(source));
-	}
-
-	/*!
-	* \brief Saves the object to a custom format file
-	* \tparam The format
-	* \param The name of the file
-	*
-	* \note It calls the overloaded serialisation() method
-	* \note Not only that it's not thread-safe, it's not even reentrant
-	*/
-	template <typename Format>
-	void saveAs(const std::string& fileName) const {
-		toJSON().saveAs<Format>(fileName);
-	}
-
-	/*!
-	* \brief Loads the object from a custom format file
-	* \tparam The format
-	* \param The name of the file
-	*
-	* \note It calls the overloaded serialisation() method
-	* \note Not only that it's not thread-safe, it's not even reentrant
-	*/
-	template <typename Format>
-	void loadAs(const std::string& fileName) {
-		fromJSON(JSON::loadAs<Format>(fileName));
-	}
-
-	/*!
-	* \brief Loads the object from a JSON file
-	* \param The name of the JSON file
-	*
-	* \note It calls the overloaded serialisation() method
-	* \note If the file cannot be read, nothing is done
-	* \note Not only that it's not thread-safe, it's not even reentrant
-	*/
-	inline void load(const std::string& fileName) {
-		fromJSON(JSON::load(fileName));
-	}
-
-	/*!
-	* \brief Saves the object to a JSON file
-	* \param The name of the JSON file
-	*
-	* \note It calls the overloaded serialisation() method
-	* \note Not only that it's not thread-safe, it's not even reentrant
-	*/
-	inline void save(const std::string& fileName) const {
-		toJSON().save(fileName);
 	}
 };
 

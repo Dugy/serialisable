@@ -115,9 +115,42 @@ This tool can be extended with custom data types to be serialised and custom way
 
 Here are some optional extensions that come with this repository.
 
-### SerialisableBrief - write even less code
+### SerialisableQuick - write even less code
 
-To write even less code for serialisation, you can use `SerialisableBrief`, a façade above `Serialisable`. It's in its separate header file, `serialisable_brief.hpp`.
+To write even less code for serialisation, you can use `SerialisableQuick`, a façade above `Serialisable`. It's in its separate header file, `serialisable_brief.hpp`.
+
+It allows serialising with even less code:
+```C++
+struct Chapter : public SerialisableQuick<Chapter> {
+	std::string contents = key("contents");
+	std::string author = key("author") = "Anonymous";
+	int readers = key("read_by") = 0;
+	int traffic = 0;
+};
+```
+It does the same as the `Chapter` class in the section above. The members must be initialised with the `key()` method, whose argument is the key of the field in JSON. The members can be optionally initialised for real by assigning into the result of the `key()` method call.
+
+It translates into a JSON as follows:
+```JSON
+{
+	"contents" : "",
+	"author" : "Anonymous",
+	"read_by"" : 0
+}
+```
+
+It uses `Serialisable` to actually convert the variables to JSON, so it can serialise the same types as `Serialisable` can and can be extended to additional types by extending `Serialisable`.
+
+This comes with some overhead when the first instance is created, but then it's as fast as `Serialisable`. It works thanks to [Defect Report 2118](http://www.open-std.org/jtc1/sc22/wg21/docs/cwg_active.html#2118), but the names need to be matched with members at runtime.
+
+It requires C++17 and the classes must be aggregate initialisable (no private members, no private base classes, no user defined constructors, no polymorphism).
+
+To allow polymorphism while keeping aggregate initialisability, the classes contain an implementation of `ISerialisable`, an interface it shares with `Serialisable`, and can be implicitly converted into it.
+
+
+### SerialisableBrief - older version of SerialisableQuick
+
+This was superseded by `SerialisableQuick`, as it is faster and safer from errors, but does not require the CRTP, works with C++14 and does not require the class to be aggregate initialisable. It's in its separate header file, `serialisable_brief.hpp`.
 
 It allows serialising with even less code:
 ```C++
@@ -139,7 +172,7 @@ struct ChapterInfo : public SerialisableBrief {
 };
 ```
 
-**Important:** if a member is *not* to be serialised, it has to be initialised with the `skip()` method (can be initialised the same way as with `key()`; it's usable also for types that cannot be serialised by `Serialisable`). Otherwise, undefined behaviour is very likely to occur when serialising/deserialising the next member, without any warning (there is a detection mechanism that throws exceptions in constructor, but it's not reliable). This applies also to any classes that inherit from it unless none of them uses any further serialisation. Therefore, this should be used only for classes that hold data and don't have much other functionality. You have been warned.
+**Important:** a big downside of this older approach is that if a member is *not* to be serialised, it has to be initialised with the `skip()` method (can be initialised the same way as with `key()`; it's usable also for types that cannot be serialised by `Serialisable`). Otherwise, undefined behaviour is very likely to occur when serialising/deserialising the next member, without any warning (there is a detection mechanism that throws exceptions in constructor, but it's not reliable). This applies also to any classes that inherit from it unless none of them uses any further serialisation. Therefore, this should be used only for classes that hold data and don't have much other functionality. You have been warned.
 
 The cost of this brevity is proneness to human errors, obscure code and lower performance, especially when constructing the objects. To avoid forgetting the `skip()` method, it's better to use `Serialisable` instead for more complex classes that aren't only for storing data. To reduce overhead, it's recommended to copy or move the objects instead of creating new ones (for example by copying a static object from a factory method).
 
@@ -172,7 +205,7 @@ struct Unsupported {
 std::string source = "[15, \"High albedo, low roughness\", 17.424, false, null, 18, 123.214, [814, 241.134]]";
 Unsupported made = readJsonObject<Unsupported>(source);
 std::cout << "Member test: " << made.b << std::endl;
-Serialisable::JSON remade = writeJsonObject(made);
+std::string remade = writeJsonObject(made);
 std::cout << "Reserialised: " << remade << std::endl;
 ```
 If C++17 is not available, member objects cannot have default values and must contain only primitive types and objects that are already allowed to be member objects.

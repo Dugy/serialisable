@@ -1,6 +1,6 @@
 #include "serialisable.hpp"
 
-namespace SerialisableAnonymousUtils {
+namespace SerialisableAnyUtils {
 
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
@@ -99,8 +99,8 @@ void deserialiseMembers(T* instance, const Serialisable::JSON& input, std::index
 template <typename T>
 Serialisable::JSON serialiseJsonObject(const T& instance) {
 	Serialisable::JSON made = Serialisable::JSON::ArrayType();
-	SerialisableAnonymousUtils::serialiseMembers<T, 0>(&instance, made,
-			std::make_index_sequence<SerialisableAnonymousUtils::MemberCounter<T, T*>::get()>());
+	SerialisableAnyUtils::serialiseMembers<T, 0>(&instance, made,
+			std::make_index_sequence<SerialisableAnyUtils::MemberCounter<T, T*>::get()>());
 	return made;
 }
 
@@ -112,8 +112,8 @@ std::string writeJsonObject(const T& instance) {
 template <typename T>
 T deserialiseJsonObject(const Serialisable::JSON& input) {
 	T made;
-	SerialisableAnonymousUtils::deserialiseMembers<T, 0>(&made, input,
-			std::make_index_sequence<SerialisableAnonymousUtils::MemberCounter<T, T*>::get()>());
+	SerialisableAnyUtils::deserialiseMembers<T, 0>(&made, input,
+			std::make_index_sequence<SerialisableAnyUtils::MemberCounter<T, T*>::get()>());
 	return made;
 }
 
