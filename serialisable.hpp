@@ -751,7 +751,7 @@ struct ISerialisable {
 	}
 };
 
-class Serialisable : ISerialisable {
+class Serialisable : public ISerialisable {
 
 public:
 

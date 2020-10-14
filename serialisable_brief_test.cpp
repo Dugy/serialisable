@@ -6,26 +6,25 @@ enum DocumentType {
 	ESSAY
 };
 
-struct Chapter : public SerialisableBrief {
+struct Chapter : public SerialisableBrief<Chapter> {
 	std::string contents = key("contents");
 	std::string author = key("author") = "Anonymous";
 };
 
-struct Preferences : public SerialisableBrief {
+struct Preferences : public SerialisableBrief<Preferences> {
 	std::string lastFolder = key("last_folder").init("");
 	unsigned int lastOpen = key("last_open").init(0);
-	int daysUntilPublication = key("days_until_publication") = -5;
+	int daysUntilPublication = key("days_until_publication") = -13;
 	uint64_t maxFilesAllowed = key("max_files_allowed") = UINT64_MAX;
 	double relativeValue = key("relative_value", 0.45);
 	bool privileged = key("privileged") = false;
-	int reusableVariable = skip(3);
-	char reusableVariable2 = skip('a');
+	int reusableVariable = 3;
+	char reusableVariable2 = 'a';
 	DocumentType documentType = key("document_type") = BOOK;
 	Chapter info = key("info");
 	std::vector<Chapter> chapters = key("chapters").init(3, Chapter());
 	std::vector<std::shared_ptr<Chapter>> footnotes = key("footnotes");
 	std::vector<std::unique_ptr<Chapter>> addenda = key("addenda");
-//	std::string* editorsNote = key("editors_notes", nullptr);
 };
 
 int main() {

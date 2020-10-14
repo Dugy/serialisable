@@ -115,46 +115,13 @@ This tool can be extended with custom data types to be serialised and custom way
 
 Here are some optional extensions that come with this repository.
 
-### SerialisableQuick - write even less code
+### SerialisableBrief - write even less code
 
-To write even less code for serialisation, you can use `SerialisableQuick`, a façade above `Serialisable`. It's in its separate header file, `serialisable_brief.hpp`.
-
-It allows serialising with even less code:
-```C++
-struct Chapter : public SerialisableQuick<Chapter> {
-	std::string contents = key("contents");
-	std::string author = key("author") = "Anonymous";
-	int readers = key("read_by") = 0;
-	int traffic = 0;
-};
-```
-It does the same as the `Chapter` class in the section above. The members must be initialised with the `key()` method, whose argument is the key of the field in JSON. The members can be optionally initialised for real by assigning into the result of the `key()` method call.
-
-It translates into a JSON as follows:
-```JSON
-{
-	"contents" : "",
-	"author" : "Anonymous",
-	"read_by"" : 0
-}
-```
-
-It uses `Serialisable` to actually convert the variables to JSON, so it can serialise the same types as `Serialisable` can and can be extended to additional types by extending `Serialisable`.
-
-This comes with some overhead when the first instance is created, but then it's as fast as `Serialisable`. It works thanks to [Defect Report 2118](http://www.open-std.org/jtc1/sc22/wg21/docs/cwg_active.html#2118), but the names need to be matched with members at runtime.
-
-It requires C++17 and the classes must be aggregate initialisable (no private members, no private base classes, no user defined constructors, no polymorphism).
-
-To allow polymorphism while keeping aggregate initialisability, the classes contain an implementation of `ISerialisable`, an interface it shares with `Serialisable`, and can be implicitly converted into it.
-
-
-### SerialisableBrief - older version of SerialisableQuick
-
-This was superseded by `SerialisableQuick`, as it is faster and safer from errors, but does not require the CRTP, works with C++14 and does not require the class to be aggregate initialisable. It's in its separate header file, `serialisable_brief.hpp`.
+To minimise the number of code needed for serialisation, you can use `SerialisableQuick`, a façade above `Serialisable`. It's in its separate header file, `serialisable_brief.hpp`. It uses no code generation or other nonstandard tools, relying on a few tricks based on features added in C++11.
 
 It allows serialising with even less code:
 ```C++
-struct Chapter : public SerialisableBrief {
+struct Chapter : public SerialisableBrief<Chapter> {
 	std::string contents = key("contents");
 	std::string author = key("author") = "Anonymous";
 	int readers = key("read_by") = 0;
@@ -165,16 +132,48 @@ It does the same as the `Chapter` class in the section above. The members must b
 The members can also be initialised using the `init()` method that takes any number of arguments that will be fed to the constructor (if not used, it will be default-initialised; brace-enclosed initialisers cannot be used). This can be shortened by adding any number of arguments after the first argument to the `key()` method, the additional arguments will be given to the constructor. This uses `Serialisable` to actually convert the variables to JSON, so it can serialise the same types as `Serialisable` can.
 
 ```C++
-struct ChapterInfo : public SerialisableBrief {
-	std::unordered_set<std::string> currentReaders = skip();
+struct ChapterInfo : public SerialisableBrief<ChapterInfo> {
+	std::unordered_set<std::string> currentReaders;
 	int pages = key("pages").init(100);
 	std::string summary = key("summary", "Some interesting stuff");
 };
 ```
 
-**Important:** a big downside of this older approach is that if a member is *not* to be serialised, it has to be initialised with the `skip()` method (can be initialised the same way as with `key()`; it's usable also for types that cannot be serialised by `Serialisable`). Otherwise, undefined behaviour is very likely to occur when serialising/deserialising the next member, without any warning (there is a detection mechanism that throws exceptions in constructor, but it's not reliable). This applies also to any classes that inherit from it unless none of them uses any further serialisation. Therefore, this should be used only for classes that hold data and don't have much other functionality. You have been warned.
+Limitations: It will usually work out of the box, but there may be some issues. When called for the first time, the constructor must will its own constructor two times (if it's not default constructible, it will be called twice with arguments given to the parent class). These additional constructions should happen identically except for different member pointer variables (unless using a non 64-bit big endian architecture), different bool variables or values incremented by 1. There also a requirement that constructors' code should not initialise variables that were not initialised in the class' initialisation. It also may have problems with custom non-polymorphic classes that start with variables that are not initialised by its constructor (this would not work out of the box, requiring extending the serialisation to new types).
 
-The cost of this brevity is proneness to human errors, obscure code and lower performance, especially when constructing the objects. To avoid forgetting the `skip()` method, it's better to use `Serialisable` instead for more complex classes that aren't only for storing data. To reduce overhead, it's recommended to copy or move the objects instead of creating new ones (for example by copying a static object from a factory method).
+Its performance is inferior to other serialisation types.
+
+There used to be an older version of `SerialisableBrief` that didn't require CRTP, but required initialising any non-serialised type by a `skip()` function, which was easy to forget. Also, its performance was lower. This new implementation works significantly differently.
+
+### SerialisableQuick - faster but more limited alternative
+
+This class is faster than `SerialisableBrief` and is used almost in the same way. It also double checks against possible invalid use and throws exceptions in case of failure. However, it has an additional limitation that the class must be aggregate-initialisable (no private members, no private base classes, no user defined constructors, no polymorphism) and requires C++17.
+
+Its usage is almost identical to `SerialisableBrief`:
+```C++
+struct Chapter : public SerialisableQuick<Chapter> {
+	std::string contents = key("contents");
+	std::string author = key("author") = "Anonymous";
+	int readers = key("read_by") = 0;
+	int traffic = 0;
+};
+```
+The members must be initialised with the `key()` method, whose argument is the key of the field in JSON. The members can be optionally initialised for real by assigning into the result of the `key()` method call.
+
+It translates into a JSON as follows:
+```JSON
+{
+	"contents" : "",
+	"author" : "Anonymous",
+	"read_by"" : 0
+}
+```
+
+Like before, it uses `Serialisable` to actually convert the variables to JSON, so it can serialise the same types as `Serialisable` can and can be extended to additional types by extending `Serialisable`.
+
+This comes with some overhead when the first instance is created, but then it's as fast as `Serialisable`. It works thanks to [Defect Report 2118](http://www.open-std.org/jtc1/sc22/wg21/docs/cwg_active.html#2118), but the names need to be matched with members at runtime.
+
+To allow polymorphism while keeping aggregate initialisability, the classes contain an implementation of `ISerialisable`, an interface it shares with `Serialisable`, and can be implicitly converted into it.
 
 ### SerialisableAny - serialise simple types effortlessly
 
@@ -190,7 +189,7 @@ Methods and default member values are allowed.
 ```C++
 struct Unsupported {
 	int a = 3;
-	std::string b = "I am not gay.";
+	std::string b = "Haha, magic!";
 	float c = 4.5;
 	bool d = true;
 	std::shared_ptr<std::string> e = nullptr;
