@@ -142,7 +142,7 @@ protected:
 	
 	template <typename... Args>
 	SerialisableBrief(Args... args) {
-		if (serialisationInfo().state != InitialisationState::VERIFIED) {
+		if (uint8_t(serialisationInfo().state) < uint8_t(InitialisationState::INITIALISED)) {
 			if (serialisationInfo().state == InitialisationState::UNINITIALISED) {
 				// Prepare stuff
 				serialisationInfo().state = InitialisationState::INITIALISING;
@@ -186,12 +186,13 @@ protected:
 
 				setupData() = nullptr;
 				serialisationInfo().state = InitialisationState::INITIALISED;
-			} else if (serialisationInfo().state == InitialisationState::INITIALISING) {
-				memset(reinterpret_cast<void*>(reinterpret_cast<uint64_t>(this) + sizeof(SerialisableBrief<Child>)),
-						garbageNumber1, sizeof(Child) - sizeof(SerialisableBrief<Child>)); // We need to keep track of what is allocated and what is trash
-			} else if (serialisationInfo().state == InitialisationState::INITIALISING_AGAIN) {
-				memset(reinterpret_cast<void*>(reinterpret_cast<uint64_t>(this) + sizeof(SerialisableBrief<Child>)),
-						garbageNumber2, sizeof(Child) - sizeof(SerialisableBrief<Child>)); // We need to keep track of what is allocated and what is trash
+			} else {
+				// We need to keep track of what is allocated and what is trash
+				void* start = reinterpret_cast<void*>(reinterpret_cast<uint64_t>(this) + sizeof(SerialisableBrief<Child>));
+				uint8_t garbageNumber = (serialisationInfo().state == InitialisationState::INITIALISING) ? garbageNumber1 : garbageNumber2;
+				size_t length = sizeof(Child) - sizeof(SerialisableBrief<Child>) - (reinterpret_cast<uint64_t>(this)
+						- reinterpret_cast<uint64_t>(setupData()->instance));
+				memset(start, garbageNumber, sizeof(Child) - sizeof(SerialisableBrief<Child>));
 			}
 		}
 	}
