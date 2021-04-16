@@ -824,8 +824,11 @@ public:
 	}
 
 private:
-	mutable JSON _json;
-	mutable bool _saving;
+	struct State {
+		JSON _json;
+		bool _saving;
+	};
+	mutable State* _state = nullptr; // Last variable MUST BE aligned to word size, otherwise SerialisableBrief won't work
 
 protected:
 	/*!
@@ -845,7 +848,7 @@ protected:
 	* \note Result is meaningless outside a serialisation() overload
 	*/
 	inline bool saving() {
-		return _saving;
+		return _state->_saving;
 	}
 
 	/*!
@@ -858,8 +861,8 @@ protected:
 	inline bool synch(const std::string& key, T& value) {
 		static_assert(SerialisableInternals::Serialiser<T, void>::valid,
 				"Trying to serialise a non-serialisable type");
-		JSON::ObjectType& object = _json.object();
-		if (_saving) {
+		JSON::ObjectType& object = _state->_json.object();
+		if (_state->_saving) {
 			object[key] = SerialisableInternals::Serialiser<T, void>::serialise(value);
 		} else {
 			auto found = object.find(key);
@@ -880,10 +883,13 @@ public:
 	* \note Not only that it's not thread-safe, it's not even reentrant
 	*/
 	inline JSON toJSON() const override {
-		_json.setObject();
-		_saving = true;
+		State state;
+		state._json.setObject();
+		state._saving = true;
+		_state = &state;
 		const_cast<Serialisable*>(this)->serialisation();
-		return _json;
+		_state = nullptr;
+		return state._json;
 	}
 
 	/*!
@@ -902,19 +908,21 @@ public:
 		}
 		if (type != JSON::Type::OBJECT)
 			throw SerialisationError("Deserialising JSON from a wrong type");
-		_json = source;
-		_saving = false;
+		State state;
+		state._json = source;
+		state._saving = false;
+		_state = &state;
 		serialisation();
-		_json = nullptr;
+		_state = nullptr;
 	}
 };
 
-std::ostream& operator<<(std::ostream& stream , const Serialisable::JSON::String& str) {
+inline std::ostream& operator<<(std::ostream& stream , const Serialisable::JSON::String& str) {
 	stream << std::string(str);
 	return stream;
 }
 
-std::ostream& operator<<(std::ostream& stream , const Serialisable::JSON& json) {
+inline std::ostream& operator<<(std::ostream& stream , const Serialisable::JSON& json) {
 	switch (json._contents & Serialisable::JSON::TYPE_MASK) {
 	case Serialisable::JSON::InternalType::NIL:
 		stream << std::string("null");
@@ -1336,7 +1344,7 @@ struct Serialiser<Serialised, std::enable_if_t<std::is_base_of<Serialisable, Ser
 	* \param The object
 	* \return The constructed JSON
 	*/
-	static Serialisable::JSON serialise(Serialised value) {
+	static Serialisable::JSON serialise(const Serialised& value) {
 		return value.toJSON();
 	}
 	/*!

@@ -178,7 +178,7 @@ protected:
 				for (unsigned int i = 0; i < info.elements.size(); i++) {
 					int start = std::max(info.elements[i].lastInitialisedBefore[0], info.elements[i].lastInitialisedBefore[1]);
 					while (childBytes[0][start] == garbageNumber1 && childBytes[1][start] == garbageNumber2) {
-						if (start > sizeof(Child)) throw std::logic_error("Reflection failed");
+						if (start > int(sizeof(Child))) throw std::logic_error("Reflection failed");
 						start++;
 					}
 					serialisationInfo().subSerialisers[i]->offset = start;
@@ -190,8 +190,6 @@ protected:
 				// We need to keep track of what is allocated and what is trash
 				void* start = reinterpret_cast<void*>(reinterpret_cast<uint64_t>(this) + sizeof(SerialisableBrief<Child>));
 				uint8_t garbageNumber = (serialisationInfo().state == InitialisationState::INITIALISING) ? garbageNumber1 : garbageNumber2;
-				size_t length = sizeof(Child) - sizeof(SerialisableBrief<Child>) - (reinterpret_cast<uint64_t>(this)
-						- reinterpret_cast<uint64_t>(setupData()->instance));
 				memset(start, garbageNumber, sizeof(Child) - sizeof(SerialisableBrief<Child>));
 			}
 		}
